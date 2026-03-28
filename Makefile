@@ -103,7 +103,7 @@ $(MT32EMUBUILDDIR)/.done: $(CIRCLESTDLIBHOME)/.done
 fluidsynth: $(FLUIDSYNTHBUILDDIR)/.done
 
 $(FLUIDSYNTHBUILDDIR)/.done: $(CIRCLESTDLIBHOME)/.done
-	@${APPLY_PATCH} $(FLUIDSYNTHHOME) patches/fluidsynth-2.4.x-circle.patch
+	@${APPLY_PATCH} $(FLUIDSYNTHHOME) patches/fluidsynth-2.5.x-circle.patch
 
 	@CFLAGS="$(CFLAGS_EXTERNAL)" \
 	cmake -B $(FLUIDSYNTHBUILDDIR) \
@@ -111,6 +111,7 @@ $(FLUIDSYNTHBUILDDIR)/.done: $(CIRCLESTDLIBHOME)/.done
 		 -DCMAKE_C_FLAGS_RELEASE="-Ofast -fopenmp-simd" \
 		 -DCMAKE_BUILD_TYPE=Release \
 		 -DBUILD_SHARED_LIBS=OFF \
+		 -Dosal=embedded \
 		 -Denable-aufile=OFF \
 		 -Denable-dbus=OFF \
 		 -Denable-dsound=OFF \
@@ -155,7 +156,7 @@ clean:
 #
 mrproper: clean
 # Reverse patches
-	@${REVERSE_PATCH} $(FLUIDSYNTHHOME) patches/fluidsynth-2.4.x-circle.patch
+	@${REVERSE_PATCH} $(FLUIDSYNTHHOME) patches/fluidsynth-2.5.x-circle.patch
 
 # Clean circle-stdlib
 	@if [ -f $(CIRCLE_STDLIB_CONFIG) ]; then $(MAKE) -C $(CIRCLESTDLIBHOME) mrproper; fi

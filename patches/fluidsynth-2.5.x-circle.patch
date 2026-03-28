@@ -1,0 +1,80 @@
+diff --git a/src/sfloader/fluid_sfont.c b/src/sfloader/fluid_sfont.c
+index 7f61d63f..c9ec5a39 100644
+--- a/src/sfloader/fluid_sfont.c
++++ b/src/sfloader/fluid_sfont.c
+@@ -22,7 +22,7 @@
+ #include "fluid_mod.h"
+ 
+ 
+-void *default_fopen(const char *path)
++__attribute__((weak)) void *default_fopen(const char *path)
+ {
+     const char* msg;
+     FILE* handle = fluid_file_open(path, &msg);
+@@ -35,22 +35,22 @@ void *default_fopen(const char *path)
+     return handle;
+ }
+ 
+-int default_fclose(void *handle)
++__attribute__((weak)) int default_fclose(void *handle)
+ {
+     return FLUID_FCLOSE((FILE *)handle) == 0 ? FLUID_OK : FLUID_FAILED;
+ }
+ 
+-fluid_long_long_t default_ftell(void *handle)
++__attribute__((weak)) fluid_long_long_t default_ftell(void *handle)
+ {
+     return FLUID_FTELL((FILE *)handle);
+ }
+ 
+-int safe_fread(void *buf, fluid_long_long_t count, void *handle)
++__attribute__((weak)) int safe_fread(void *buf, fluid_long_long_t count, void *handle)
+ {
+     return fluid_file_read(buf, count, handle);
+ }
+ 
+-int safe_fseek(void *handle, fluid_long_long_t ofs, int whence)
++__attribute__((weak)) int safe_fseek(void *handle, fluid_long_long_t ofs, int whence)
+ {
+     return fluid_file_seek(handle, ofs, whence);
+ }
+diff --git a/src/utils/fluid_sys.c b/src/utils/fluid_sys.c
+index 24a524a4..9a7a85fd 100644
+--- a/src/utils/fluid_sys.c
++++ b/src/utils/fluid_sys.c
+@@ -224,7 +224,7 @@ fluid_log(int level, const char *fmt, ...)
+     return FLUID_FAILED;
+ }
+ 
+-void* fluid_alloc(size_t len)
++__attribute__((weak)) void* fluid_alloc(size_t len)
+ {
+     void* ptr = malloc(len);
+ 
+@@ -317,7 +317,7 @@ error_recovery:
+  *
+  * @since 2.0.7
+  */
+-void fluid_free(void* ptr)
++__attribute__((weak)) void fluid_free(void* ptr)
+ {
+     free(ptr);
+ }
+@@ -1586,7 +1586,7 @@ void delete_fluid_server_socket(fluid_server_socket_t *server_socket)
+ 
+ #endif // NETWORK_SUPPORT
+ 
+-FILE* fluid_file_open(const char* path, const char** errMsg)
++__attribute__((weak)) FILE* fluid_file_open(const char* path, const char** errMsg)
+ {
+     static const char ErrExist[] = "File does not exist.";
+     static const char ErrRegular[] = "File is not regular, refusing to open it.";
+@@ -1619,7 +1619,7 @@ FILE* fluid_file_open(const char* path, const char** errMsg)
+     return handle;
+ }
+ 
+-fluid_long_long_t fluid_file_tell(FILE* f)
++__attribute__((weak)) fluid_long_long_t fluid_file_tell(FILE* f)
+ {
+ #ifdef _WIN32
+     // On Windows, long is only a 32 bit integer. Thus ftell() does not support to handle files >2GiB.
