@@ -136,7 +136,7 @@ void CMT32Synth::HandleMIDISysExMessage(const u8* pData, size_t nSize)
 void CMT32Synth::AllSoundOff()
 {
 	// Stop all sound immediately; mt32emu treats CC 0x7C like "All Sound Off", ignoring pedal
-	for (uint8_t i = 0; i < 8; ++i)
+	for (u8 i = 0; i < 8; ++i)
 		m_pSynth->playMsgOnPart(i, 0x0B, 0x7C, 0);
 
 	// Reset MIDI monitor

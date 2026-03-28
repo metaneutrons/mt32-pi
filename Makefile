@@ -38,9 +38,6 @@ submodules:
 # Configure circle-stdlib
 #
 $(CIRCLE_STDLIB_CONFIG) $(CIRCLE_CONFIG)&:
-	#patch config for mingw
-	@${APPLY_PATCH} $(CIRCLESTDLIBHOME) patches/circle-std-config-mingw.patch
-	
 	@echo "Configuring for Raspberry Pi $(RASPBERRYPI) ($(BITS) bit)"
 	$(CIRCLESTDLIBHOME)/configure --raspberrypi=$(RASPBERRYPI) --prefix=$(PREFIX)
 
@@ -158,7 +155,6 @@ clean:
 #
 mrproper: clean
 # Reverse patches
-	@${REVERSE_PATCH} $(CIRCLESTDLIBHOME) patches/circle-std-config-mingw.patch
 	@${REVERSE_PATCH} $(FLUIDSYNTHHOME) patches/fluidsynth-2.4.7-circle.patch
 
 # Clean circle-stdlib
