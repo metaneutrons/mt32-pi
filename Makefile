@@ -59,6 +59,9 @@ endif
 # Enable PWM audio output on GPIO 12/13 for the Pi Zero 2 W
 	@echo "DEFINE += -DUSE_PWM_AUDIO_ON_ZERO" >> $(CIRCLE_CONFIG)
 
+# Increase kernel max size for SF3/stb_vorbis support
+	@echo "DEFINE += -DKERNEL_MAX_SIZE=0x400000" >> $(CIRCLE_CONFIG)
+
 # Disable unnecessary devices
 	@echo "DEFINE += -DEXCLUDE_USB_STORAGE" >> $(CIRCLE_CONFIG)
 	@echo "DEFINE += -DEXCLUDE_USB_KEYB" >> $(CIRCLE_CONFIG)
@@ -134,6 +137,7 @@ $(FLUIDSYNTHBUILDDIR)/.done: $(CIRCLESTDLIBHOME)/.done
 		 -Denable-threads=OFF \
 		 -Denable-waveout=OFF \
 		 -Denable-winmidi=OFF \
+		 -DCMAKE_C_FLAGS="-DSTB_VORBIS_SUPPORT=1" \
 		 $(FLUIDSYNTHHOME) \
 		 >/dev/null
 	@cmake --build $(FLUIDSYNTHBUILDDIR) --target libfluidsynth

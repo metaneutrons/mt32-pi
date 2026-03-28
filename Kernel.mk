@@ -4,6 +4,9 @@
 
 include Config.mk
 
+# stb_vorbis adds ~95KB; raise from default 2MB to 4MB for headroom
+DEFINE		+=	-DKERNEL_MAX_SIZE=0x400000
+
 OBJS		:=	src/config.o \
 			src/control/control.o \
 			src/control/mister.o \
