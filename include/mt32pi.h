@@ -187,6 +187,7 @@ private:
 	// Serial GPIO MIDI
 	bool m_bSerialMIDIAvailable;
 	bool m_bSerialMIDIEnabled;
+	bool m_bMIDIThruEnabled;
 
 	// USB devices
 	CUSBMIDIDevice* m_pUSBMIDIDevice;

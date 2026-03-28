@@ -26,6 +26,10 @@
 #include <circle/sound/i2ssoundbasedevice.h>
 #include <circle/sound/pwmsoundbasedevice.h>
 
+#ifdef __aarch64__
+#include <arm_neon.h>
+#endif
+
 #include <cstdarg>
 
 #include "lcd/drivers/hd44780.h"
@@ -101,6 +105,7 @@ CMT32Pi::CMT32Pi(CI2CMaster* pI2CMaster, CSPIMaster* pSPIMaster, CInterruptSyste
 
 	  m_bSerialMIDIAvailable(false),
 	  m_bSerialMIDIEnabled(false),
+	  m_bMIDIThruEnabled(false),
 	  m_pUSBMIDIDevice(nullptr),
 	  m_pUSBSerialDevice(nullptr),
 	  m_pUSBMassStorageDevice(nullptr),
@@ -132,6 +137,7 @@ bool CMT32Pi::Initialize(bool bSerialMIDIAvailable)
 {
 	m_bSerialMIDIAvailable = bSerialMIDIAvailable;
 	m_bSerialMIDIEnabled = bSerialMIDIAvailable;
+	m_bMIDIThruEnabled = m_pConfig->MIDIThru;
 
 	//Wipe error buffer;
 	char Buffer[LOGGER_BUFSIZE];
@@ -584,22 +590,57 @@ void CMT32Pi::AudioTask()
 
 		if (bReversedStereo)
 		{
-			// Convert to signed 24-bit integers with channel swap
-			for (size_t i = 0; i < nFrames * nChannels; i += nChannels)
+			const size_t nSamples = nFrames * nChannels;
+#ifdef __aarch64__
+			if (bI2S)
 			{
-				s32* const pLeftSample = reinterpret_cast<s32*>(IntBuffer + i * nBytesPerSample);
-				s32* const pRightSample = reinterpret_cast<s32*>(IntBuffer + (i + 1) * nBytesPerSample);
-				*pLeftSample = FloatBuffer[i + 1] * Sample24BitMax;
-				*pRightSample = FloatBuffer[i] * Sample24BitMax;
+				// NEON: 4-wide float→s32 with L/R swap via vrev64q
+				const float32x4_t vScale = vdupq_n_f32(Sample24BitMax);
+				s32* const pOut = reinterpret_cast<s32*>(IntBuffer);
+				size_t i = 0;
+				for (; i + 4 <= nSamples; i += 4)
+					vst1q_s32(pOut + i, vcvtq_s32_f32(vmulq_f32(vrev64q_f32(vld1q_f32(FloatBuffer + i)), vScale)));
+				for (; i < nSamples; i += nChannels)
+				{
+					pOut[i]     = FloatBuffer[i + 1] * Sample24BitMax;
+					pOut[i + 1] = FloatBuffer[i]     * Sample24BitMax;
+				}
+			}
+			else
+#endif
+			{
+				for (size_t i = 0; i < nSamples; i += nChannels)
+				{
+					s32* const pLeftSample = reinterpret_cast<s32*>(IntBuffer + i * nBytesPerSample);
+					s32* const pRightSample = reinterpret_cast<s32*>(IntBuffer + (i + 1) * nBytesPerSample);
+					*pLeftSample = FloatBuffer[i + 1] * Sample24BitMax;
+					*pRightSample = FloatBuffer[i] * Sample24BitMax;
+				}
 			}
 		}
 		else
 		{
-			// Convert to signed 24-bit integers
-			for (size_t i = 0; i < nFrames * nChannels; ++i)
+			const size_t nSamples = nFrames * nChannels;
+#ifdef __aarch64__
+			if (bI2S)
 			{
-				s32* const pSample = reinterpret_cast<s32*>(IntBuffer + i * nBytesPerSample);
-				*pSample = FloatBuffer[i] * Sample24BitMax;
+				// NEON: 4-wide float→s32
+				const float32x4_t vScale = vdupq_n_f32(Sample24BitMax);
+				s32* const pOut = reinterpret_cast<s32*>(IntBuffer);
+				size_t i = 0;
+				for (; i + 4 <= nSamples; i += 4)
+					vst1q_s32(pOut + i, vcvtq_s32_f32(vmulq_f32(vld1q_f32(FloatBuffer + i), vScale)));
+				for (; i < nSamples; ++i)
+					pOut[i] = FloatBuffer[i] * Sample24BitMax;
+			}
+			else
+#endif
+			{
+				for (size_t i = 0; i < nSamples; ++i)
+				{
+					s32* const pSample = reinterpret_cast<s32*>(IntBuffer + i * nBytesPerSample);
+					*pSample = FloatBuffer[i] * Sample24BitMax;
+				}
 			}
 		}
 
@@ -936,6 +977,10 @@ void CMT32Pi::UpdateMIDI()
 	// Process MIDI messages
 	ParseMIDIBytes(Buffer, nBytes);
 
+	// Universal MIDI Thru: forward received bytes to UART TX
+	if (m_bMIDIThruEnabled && m_pSerial)
+		m_pSerial->Write(Buffer, nBytes);
+
 	// Reset the Active Sense timer
 	s_pThis->m_nActiveSenseTime = s_pThis->m_pTimer->GetTicks();
 }
@@ -998,7 +1043,7 @@ size_t CMT32Pi::ReceiveSerialMIDI(u8* pOutData, size_t nSize)
 	}
 
 	// Replay received MIDI data out via the serial port ('software thru')
-	if (m_pConfig->MIDIGPIOThru)
+	if (!m_bMIDIThruEnabled && m_pConfig->MIDIGPIOThru)
 	{
 		int nSendResult = m_pSerial->Write(pOutData, nResult);
 		if (nSendResult != nResult)
