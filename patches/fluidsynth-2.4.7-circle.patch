@@ -1,0 +1,2222 @@
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+index 6bd1d659..06a9cec0 100644
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -167,23 +167,6 @@ set ( libfluidsynth_SOURCES
+     synth/fluid_tuning.h
+     synth/fluid_voice.c
+     synth/fluid_voice.h
+-    midi/fluid_midi.c
+-    midi/fluid_midi.h
+-    midi/fluid_midi_router.c
+-    midi/fluid_midi_router.h
+-    midi/fluid_seqbind.c
+-    midi/fluid_seqbind_notes.cpp
+-    midi/fluid_seq.c
+-    midi/fluid_seq_queue.cpp
+-    drivers/fluid_adriver.c
+-    drivers/fluid_adriver.h
+-    drivers/fluid_mdriver.c
+-    drivers/fluid_mdriver.h
+-    bindings/fluid_cmd.c
+-    bindings/fluid_cmd.h
+-    bindings/fluid_filerenderer.c
+-    bindings/fluid_ladspa.c
+-    bindings/fluid_ladspa.h
+ )
+ if ( CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU" )
+   set_source_files_properties(rvoice/fluid_iir_filter_impl.cpp PROPERTIES COMPILE_FLAGS "-fno-math-errno -ffast-math")
+@@ -367,7 +350,7 @@ if ( TARGET OpenMP::OpenMP_C AND HAVE_OPENMP )
+     target_link_libraries ( libfluidsynth-OBJ PUBLIC OpenMP::OpenMP_C )
+ endif()
+ 
+-target_link_libraries ( libfluidsynth-OBJ PUBLIC GLib2::glib-2 GLib2::gthread-2 )
++# target_link_libraries ( libfluidsynth-OBJ PUBLIC GLib2::glib-2 GLib2::gthread-2 )
+ 
+ if ( TARGET SndFile::sndfile AND LIBSNDFILE_SUPPORT )
+     target_link_libraries ( libfluidsynth-OBJ PUBLIC SndFile::sndfile )
+diff --git a/src/sfloader/fluid_sfont.c b/src/sfloader/fluid_sfont.c
+index cad6f18d..e809edb6 100644
+--- a/src/sfloader/fluid_sfont.c
++++ b/src/sfloader/fluid_sfont.c
+@@ -21,67 +21,11 @@
+ #include "fluid_sfont.h"
+ #include "fluid_sys.h"
+ 
+-
+-void *default_fopen(const char *path)
+-{
+-    const char* msg;
+-    FILE* handle = fluid_file_open(path, &msg);
+-
+-    if(handle == NULL)
+-    {
+-        FLUID_LOG(FLUID_ERR, "fluid_sfloader_load(): Failed to open '%s': %s", path, msg);
+-    }
+-
+-    return handle;
+-}
+-
+-int default_fclose(void *handle)
+-{
+-    return FLUID_FCLOSE((FILE *)handle) == 0 ? FLUID_OK : FLUID_FAILED;
+-}
+-
+-fluid_long_long_t default_ftell(void *handle)
+-{
+-    return FLUID_FTELL((FILE *)handle);
+-}
+-
+-#ifdef _WIN32
+-#define FLUID_PRIi64 "I64d"
+-#else
+-#define FLUID_PRIi64 "lld"
+-#endif
+-
+-int safe_fread(void *buf, fluid_long_long_t count, void *fd)
+-{
+-    if(FLUID_FREAD(buf, (size_t)count, 1, (FILE *)fd) != 1)
+-    {
+-        if(feof((FILE *)fd))
+-        {
+-            FLUID_LOG(FLUID_ERR, "EOF while attempting to read %" FLUID_PRIi64 " bytes", count);
+-        }
+-        else
+-        {
+-            FLUID_LOG(FLUID_ERR, "File read failed");
+-        }
+-
+-        return FLUID_FAILED;
+-    }
+-
+-    return FLUID_OK;
+-}
+-
+-int safe_fseek(void *fd, fluid_long_long_t ofs, int whence)
+-{
+-    if(FLUID_FSEEK((FILE *)fd, ofs, whence) != 0)
+-    {
+-        FLUID_LOG(FLUID_ERR, "File seek failed with offset = %" FLUID_PRIi64 " and whence = %d", ofs, whence);
+-        return FLUID_FAILED;
+-    }
+-
+-    return FLUID_OK;
+-}
+-
+-#undef FLUID_PRIi64
++void *default_fopen(const char *path);
++int default_fclose(void *handle);
++fluid_long_long_t default_ftell(void *handle);
++int safe_fread(void *buf, fluid_long_long_t count, void *fd);
++int safe_fseek(void *fd, fluid_long_long_t ofs, int whence);
+ 
+ /**
+  * Creates a new SoundFont loader.
+diff --git a/src/synth/fluid_synth.c b/src/synth/fluid_synth.c
+index df08eb6b..e97f030f 100644
+--- a/src/synth/fluid_synth.c
++++ b/src/synth/fluid_synth.c
+@@ -108,7 +108,6 @@ static int fluid_synth_render_blocks(fluid_synth_t *synth, int blockcount);
+ static fluid_voice_t *fluid_synth_free_voice_by_kill_LOCAL(fluid_synth_t *synth);
+ static void fluid_synth_kill_by_exclusive_class_LOCAL(fluid_synth_t *synth,
+         fluid_voice_t *new_voice);
+-static int fluid_synth_sfunload_callback(void *data, unsigned int msec);
+ static fluid_tuning_t *fluid_synth_get_tuning(fluid_synth_t *synth,
+         int bank, int prog);
+ static int fluid_synth_replace_tuning_LOCK(fluid_synth_t *synth,
+@@ -1168,16 +1167,8 @@ delete_fluid_synth(fluid_synth_t *synth)
+ 
+     /* wait for and delete all the lazy sfont unloading timers */
+ 
+-    for(list = synth->fonts_to_be_unloaded; list; list = fluid_list_next(list))
+-    {
+-        fluid_timer_t* timer = fluid_list_get(list);
+-        // explicitly join to wait for the unload really to happen
+-        fluid_timer_join(timer);
+-        // delete_fluid_timer alone would stop the timer, even if it had not unloaded the soundfont yet
+-        delete_fluid_timer(timer);
+-    }
++    /* REMOVED FOR HW */
+ 
+-    delete_fluid_list(synth->fonts_to_be_unloaded);
+ 
+     if(synth->channel != NULL)
+     {
+@@ -5523,31 +5514,13 @@ fluid_synth_sfont_unref(fluid_synth_t *synth, fluid_sfont_t *sfont)
+         {
+             FLUID_LOG(FLUID_DBG, "Unloaded SoundFont");
+         } /* spin off a timer thread to unload the sfont later (SoundFont loader blocked unload) */
+-        else
+-        {
+-            fluid_timer_t* timer = new_fluid_timer(100, fluid_synth_sfunload_callback, sfont, TRUE, FALSE, FALSE);
+-            synth->fonts_to_be_unloaded = fluid_list_prepend(synth->fonts_to_be_unloaded, timer);
+-        }
++		//else REMOVED FOR HW
+     }
+ }
+ 
+ /* Callback to continually attempt to unload a SoundFont,
+  * only if a SoundFont loader blocked the unload operation */
+-static int
+-fluid_synth_sfunload_callback(void *data, unsigned int msec)
+-{
+-    fluid_sfont_t *sfont = data;
+-
+-    if(fluid_sfont_delete_internal(sfont) == 0)
+-    {
+-        FLUID_LOG(FLUID_DBG, "Unloaded SoundFont");
+-        return FALSE;
+-    }
+-    else
+-    {
+-        return TRUE;
+-    }
+-}
++//REMOVED FOR HW
+ 
+ /**
+  * Reload a SoundFont.  The SoundFont retains its ID and index on the SoundFont stack.
+@@ -7856,56 +7829,7 @@ fluid_synth_get_gen(fluid_synth_t *synth, int chan, int param)
+  * @param event MIDI event to handle
+  * @return #FLUID_OK on success, #FLUID_FAILED otherwise
+  */
+-int
+-fluid_synth_handle_midi_event(void *data, fluid_midi_event_t *event)
+-{
+-    fluid_synth_t *synth = (fluid_synth_t *) data;
+-    int type = fluid_midi_event_get_type(event);
+-    int chan = fluid_midi_event_get_channel(event);
+-
+-    switch(type)
+-    {
+-    case NOTE_ON:
+-        return fluid_synth_noteon(synth, chan,
+-                                  fluid_midi_event_get_key(event),
+-                                  fluid_midi_event_get_velocity(event));
+-
+-    case NOTE_OFF:
+-        return fluid_synth_noteoff(synth, chan, fluid_midi_event_get_key(event));
+-
+-    case CONTROL_CHANGE:
+-        return fluid_synth_cc(synth, chan,
+-                              fluid_midi_event_get_control(event),
+-                              fluid_midi_event_get_value(event));
+-
+-    case PROGRAM_CHANGE:
+-        return fluid_synth_program_change(synth, chan, fluid_midi_event_get_program(event));
+-
+-    case CHANNEL_PRESSURE:
+-        return fluid_synth_channel_pressure(synth, chan, fluid_midi_event_get_program(event));
+-
+-    case KEY_PRESSURE:
+-        return fluid_synth_key_pressure(synth, chan,
+-                                        fluid_midi_event_get_key(event),
+-                                        fluid_midi_event_get_value(event));
+-
+-    case PITCH_BEND:
+-        return fluid_synth_pitch_bend(synth, chan, fluid_midi_event_get_pitch(event));
+-
+-    case MIDI_SYSTEM_RESET:
+-        return fluid_synth_system_reset(synth);
+-
+-    case MIDI_SYSEX:
+-        return fluid_synth_sysex(synth, event->paramptr, event->param1, NULL, NULL, NULL, FALSE);
+-
+-    case MIDI_TEXT:
+-    case MIDI_LYRIC:
+-    case MIDI_SET_TEMPO:
+-        return FLUID_OK;
+-    }
+-
+-    return FLUID_FAILED;
+-}
++// REMOVED FOR HW
+ 
+ /**
+  * Create and start voices using an arbitrary preset and a MIDI note on event.
+diff --git a/src/synth/fluid_synth.h b/src/synth/fluid_synth.h
+index 262bdece..eaf0a4f3 100644
+--- a/src/synth/fluid_synth.h
++++ b/src/synth/fluid_synth.h
+@@ -133,7 +133,6 @@ struct _fluid_synth_t
+     fluid_list_t *loaders;             /**< the SoundFont loaders */
+     fluid_list_t *sfont;          /**< List of fluid_sfont_info_t for each loaded SoundFont (remains until SoundFont is unloaded) */
+     int sfont_id;             /**< Incrementing ID assigned to each loaded SoundFont */
+-    fluid_list_t *fonts_to_be_unloaded; /**< list of timers that try to unload a soundfont */
+ 
+     float gain;                        /**< master gain */
+     fluid_channel_t **channel;         /**< the channels */
+diff --git a/src/utils/fluid_settings.c b/src/utils/fluid_settings.c
+index dbee649b..3902a1c9 100644
+--- a/src/utils/fluid_settings.c
++++ b/src/utils/fluid_settings.c
+@@ -330,11 +330,6 @@ fluid_settings_init(fluid_settings_t *settings)
+     fluid_return_if_fail(settings != NULL);
+ 
+     fluid_synth_settings(settings);
+-    fluid_shell_settings(settings);
+-    fluid_player_settings(settings);
+-    fluid_file_renderer_settings(settings);
+-    fluid_audio_driver_settings(settings);
+-    fluid_midi_driver_settings(settings);
+ }
+ 
+ static int
+diff --git a/src/utils/fluid_sys.c b/src/utils/fluid_sys.c
+index 9b45d58a..d74a1197 100644
+--- a/src/utils/fluid_sys.c
++++ b/src/utils/fluid_sys.c
+@@ -50,39 +50,6 @@
+ #define FLUID_SYS_TIMER_HIGH_PRIO_LEVEL         10
+ 
+ 
+-typedef struct
+-{
+-    fluid_thread_func_t func;
+-    void *data;
+-    int prio_level;
+-} fluid_thread_info_t;
+-
+-struct _fluid_timer_t
+-{
+-    long msec;
+-
+-    // Pointer to a function to be executed by the timer.
+-    // This field is set to NULL once the timer is finished to indicate completion.
+-    // This allows for timed waits, rather than waiting forever as fluid_timer_join() does.
+-    fluid_timer_callback_t callback;
+-    void *data;
+-    fluid_thread_t *thread;
+-    int cont;
+-    int auto_destroy;
+-};
+-
+-struct _fluid_server_socket_t
+-{
+-    fluid_socket_t socket;
+-    fluid_thread_t *thread;
+-    int cont;
+-    fluid_server_func_t func;
+-    void *data;
+-};
+-
+-
+-static int fluid_istream_gets(fluid_istream_t in, char *buf, int len);
+-
+ static fluid_log_function_t fluid_log_function[LAST_LOG_LEVEL] =
+ {
+     fluid_default_log_function,
+@@ -198,104 +165,6 @@ fluid_log(int level, const char *fmt, ...)
+     return FLUID_FAILED;
+ }
+ 
+-void* fluid_alloc(size_t len)
+-{
+-    void* ptr = malloc(len);
+-
+-#if defined(DEBUG) && !defined(_MSC_VER)
+-    // garbage initialize allocated memory for debug builds to ease reproducing
+-    // bugs like 44453ff23281b3318abbe432fda90888c373022b .
+-    //
+-    // MSVC++ already garbage initializes allocated memory by itself (debug-heap).
+-    //
+-    // 0xCC because
+-    // * it makes pointers reliably crash when dereferencing them,
+-    // * floating points are still some valid but insanely huge negative number, and
+-    // * if for whatever reason this allocated memory is executed, it'll trigger
+-    //   INT3 (...at least on x86)
+-    if(ptr != NULL)
+-    {
+-        memset(ptr, 0xCC, len);
+-    }
+-#endif
+-    return ptr;
+-}
+-
+-/**
+- * Open a file with a UTF-8 string, even in Windows
+- * @param filename The name of the file to open
+- * @param mode The mode to open the file in
+- */
+-FILE *fluid_fopen(const char *filename, const char *mode)
+-{
+-#if defined(_WIN32)
+-    wchar_t *wpath = NULL, *wmode = NULL;
+-    FILE *file = NULL;
+-    int length;
+-    if ((length = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, filename, -1, NULL, 0)) == 0)
+-    {
+-        FLUID_LOG(FLUID_ERR, "Unable to perform MultiByteToWideChar() conversion for filename '%s'. Error was: '%s'", filename, fluid_get_windows_error());
+-        errno = EINVAL;
+-        goto error_recovery;
+-    }
+-    
+-    wpath = FLUID_MALLOC(length * sizeof(wchar_t));
+-    if (wpath == NULL)
+-    {
+-        FLUID_LOG(FLUID_PANIC, "Out of memory.");
+-        errno = EINVAL;
+-        goto error_recovery;
+-    }
+-
+-    MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, filename, -1, wpath, length);
+-
+-    if ((length = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, mode, -1, NULL, 0)) == 0)
+-    {
+-        FLUID_LOG(FLUID_ERR, "Unable to perform MultiByteToWideChar() conversion for mode '%s'. Error was: '%s'", mode, fluid_get_windows_error());
+-        errno = EINVAL;
+-        goto error_recovery;
+-    }
+-
+-    wmode = FLUID_MALLOC(length * sizeof(wchar_t));
+-    if (wmode == NULL)
+-    {
+-        FLUID_LOG(FLUID_PANIC, "Out of memory.");
+-        errno = EINVAL;
+-        goto error_recovery;
+-    }
+-
+-    MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, mode, -1, wmode, length);
+-
+-    file = _wfopen(wpath, wmode);
+-
+-error_recovery:
+-    FLUID_FREE(wpath);
+-    FLUID_FREE(wmode);
+-
+-    return file;
+-#else
+-    return fopen(filename, mode);
+-#endif
+-}
+-
+-/**
+- * Wrapper for free() that satisfies at least C90 requirements.
+- *
+- * @param ptr Pointer to memory region that should be freed
+- *
+- * @note Only use this function when the API documentation explicitly says so. Otherwise use
+- * adequate \c delete_fluid_* functions.
+- *
+- * @warning Calling ::free() on memory that is advised to be freed with fluid_free() results in undefined behaviour!
+- * (cf.: "Potential Errors Passing CRT Objects Across DLL Boundaries" found in MS Docs)
+- *
+- * @since 2.0.7
+- */
+-void fluid_free(void* ptr)
+-{
+-    free(ptr);
+-}
+-
+ /**
+  * An improved strtok, still trashes the input string, but is portable and
+  * thread safe.  Also skips token chars at beginning of token string and never
+@@ -372,15 +241,6 @@ char *fluid_strtok(char **str, char *delim)
+     return token;
+ }
+ 
+-/**
+- * Suspend the execution of the current thread for the specified amount of time.
+- * @param milliseconds to wait.
+- */
+-void fluid_msleep(unsigned int msecs)
+-{
+-    g_usleep(msecs * 1000);
+-}
+-
+ /**
+  * Get time in milliseconds to be used in relative timing operations.
+  * @return Monotonic time in milliseconds.
+@@ -399,1418 +259,3 @@ unsigned int fluid_curtime(void)
+ 
+     return (unsigned int)((now - initial_time) / 1000.0);
+ }
+-
+-/**
+- * Get time in microseconds to be used in relative timing operations.
+- * @return time in microseconds.
+- * Note: When used for profiling we need high precision clock given
+- * by g_get_monotonic_time()if available (glib version >= 2.53.3).
+- * If glib version is too old and in the case of Windows the function
+- * uses high precision performance counter instead of g_getmonotic_time().
+- */
+-double
+-fluid_utime(void)
+-{
+-    double utime;
+-
+-#if GLIB_MAJOR_VERSION == 2 && GLIB_MINOR_VERSION >= 28
+-    /* use high precision monotonic clock if available (g_monotonic_time().
+-     * For Windows, if this clock is actually implemented as low prec. clock
+-     * (i.e. in case glib is too old), high precision performance counter are
+-     * used instead.
+-     * see: https://bugzilla.gnome.org/show_bug.cgi?id=783340
+-     */
+-#if defined(WITH_PROFILING) &&  defined(_WIN32) &&\
+-	/* glib < 2.53.3 */\
+-	(GLIB_MINOR_VERSION <= 53 && (GLIB_MINOR_VERSION < 53 || GLIB_MICRO_VERSION < 3))
+-    /* use high precision performance counter. */
+-    static LARGE_INTEGER freq_cache = {0, 0};	/* Performance Frequency */
+-    LARGE_INTEGER perf_cpt;
+-
+-    if(! freq_cache.QuadPart)
+-    {
+-        QueryPerformanceFrequency(&freq_cache);  /* Frequency value */
+-    }
+-
+-    QueryPerformanceCounter(&perf_cpt); /* Counter value */
+-    utime = perf_cpt.QuadPart * 1000000.0 / freq_cache.QuadPart; /* time in micros */
+-#else
+-    utime = g_get_monotonic_time();
+-#endif
+-#else
+-    /* fallback to less precise clock */
+-    GTimeVal timeval;
+-    g_get_current_time(&timeval);
+-    utime = (timeval.tv_sec * 1000000.0 + timeval.tv_usec);
+-#endif
+-
+-    return utime;
+-}
+-
+-
+-
+-#if defined(_WIN32)      /* Windoze specific stuff */
+-
+-void
+-fluid_thread_self_set_prio(int prio_level)
+-{
+-    if(prio_level > 0)
+-    {
+-        SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
+-    }
+-}
+-
+-
+-#elif defined(__OS2__)  /* OS/2 specific stuff */
+-
+-void
+-fluid_thread_self_set_prio(int prio_level)
+-{
+-    if(prio_level > 0)
+-    {
+-        DosSetPriority(PRTYS_THREAD, PRTYC_REGULAR, PRTYD_MAXIMUM, 0);
+-    }
+-}
+-
+-#else   /* POSIX stuff..  Nice POSIX..  Good POSIX. */
+-
+-void
+-fluid_thread_self_set_prio(int prio_level)
+-{
+-    struct sched_param priority;
+-
+-    if(prio_level > 0)
+-    {
+-
+-        memset(&priority, 0, sizeof(priority));
+-        priority.sched_priority = prio_level;
+-
+-        if(pthread_setschedparam(pthread_self(), SCHED_FIFO, &priority) == 0)
+-        {
+-            return;
+-        }
+-
+-#ifdef DBUS_SUPPORT
+-        /* Try to gain high priority via rtkit */
+-
+-        if(fluid_rtkit_make_realtime(0, prio_level) == 0)
+-        {
+-            return;
+-        }
+-
+-#endif
+-        FLUID_LOG(FLUID_WARN, "Failed to set thread to high priority");
+-    }
+-}
+-
+-#ifdef FPE_CHECK
+-
+-/***************************************************************
+- *
+- *               Floating point exceptions
+- *
+- *  The floating point exception functions were taken from Ircam's
+- *  jMax source code. https://www.ircam.fr/jmax
+- *
+- *  FIXME: check in config for i386 machine
+- *
+- *  Currently not used. I leave the code here in case we want to pick
+- *  this up again some time later.
+- */
+-
+-/* Exception flags */
+-#define _FPU_STATUS_IE    0x001  /* Invalid Operation */
+-#define _FPU_STATUS_DE    0x002  /* Denormalized Operand */
+-#define _FPU_STATUS_ZE    0x004  /* Zero Divide */
+-#define _FPU_STATUS_OE    0x008  /* Overflow */
+-#define _FPU_STATUS_UE    0x010  /* Underflow */
+-#define _FPU_STATUS_PE    0x020  /* Precision */
+-#define _FPU_STATUS_SF    0x040  /* Stack Fault */
+-#define _FPU_STATUS_ES    0x080  /* Error Summary Status */
+-
+-/* Macros for accessing the FPU status word.  */
+-
+-/* get the FPU status */
+-#define _FPU_GET_SW(sw) __asm__ ("fnstsw %0" : "=m" (*&sw))
+-
+-/* clear the FPU status */
+-#define _FPU_CLR_SW() __asm__ ("fnclex" : : )
+-
+-/* Purpose:
+- * Checks, if the floating point unit has produced an exception, print a message
+- * if so and clear the exception.
+- */
+-unsigned int fluid_check_fpe_i386(char *explanation)
+-{
+-    unsigned int s;
+-
+-    _FPU_GET_SW(s);
+-    _FPU_CLR_SW();
+-
+-    s &= _FPU_STATUS_IE | _FPU_STATUS_DE | _FPU_STATUS_ZE | _FPU_STATUS_OE | _FPU_STATUS_UE;
+-
+-    if(s)
+-    {
+-        FLUID_LOG(FLUID_WARN, "FPE exception (before or in %s): %s%s%s%s%s", explanation,
+-                  (s & _FPU_STATUS_IE) ? "Invalid operation " : "",
+-                  (s & _FPU_STATUS_DE) ? "Denormal number " : "",
+-                  (s & _FPU_STATUS_ZE) ? "Zero divide " : "",
+-                  (s & _FPU_STATUS_OE) ? "Overflow " : "",
+-                  (s & _FPU_STATUS_UE) ? "Underflow " : "");
+-    }
+-
+-    return s;
+-}
+-
+-/* Purpose:
+- * Clear floating point exception.
+- */
+-void fluid_clear_fpe_i386(void)
+-{
+-    _FPU_CLR_SW();
+-}
+-
+-#endif	// ifdef FPE_CHECK
+-
+-
+-#endif	// #else    (its POSIX)
+-
+-
+-/***************************************************************
+- *
+- *               Profiling (Linux, i586 only)
+- *
+- */
+-
+-#if WITH_PROFILING
+-/* Profiling interface between profiling command shell and audio rendering API
+-  (FluidProfile_0004.pdf- 3.2.2).
+-  Macros are in defined in fluid_sys.h.
+-*/
+-
+-/*
+-  -----------------------------------------------------------------------------
+-  Shell task side |    Profiling interface               |  Audio task side
+-  -----------------------------------------------------------------------------
+-  profiling       |    Internal     |      |             |      Audio
+-  command   <---> |<-- profiling -->| Data |<--macros -->| <--> rendering
+-  shell           |    API          |      |             |      API
+-
+-*/
+-/* default parameters for shell command "prof_start" in fluid_sys.c */
+-unsigned short fluid_profile_notes = 0; /* number of generated notes */
+-/* preset bank:0 prog:16 (organ) */
+-unsigned char fluid_profile_bank = FLUID_PROFILE_DEFAULT_BANK;
+-unsigned char fluid_profile_prog = FLUID_PROFILE_DEFAULT_PROG;
+-
+-/* print mode */
+-unsigned char fluid_profile_print = FLUID_PROFILE_DEFAULT_PRINT;
+-/* number of measures */
+-unsigned short fluid_profile_n_prof = FLUID_PROFILE_DEFAULT_N_PROF;
+-/* measure duration in ms */
+-unsigned short fluid_profile_dur = FLUID_PROFILE_DEFAULT_DURATION;
+-/* lock between multiple-shell */
+-fluid_atomic_int_t fluid_profile_lock = 0;
+-/**/
+-
+-/*----------------------------------------------
+-  Profiling Data
+------------------------------------------------*/
+-unsigned char fluid_profile_status = PROFILE_STOP; /* command and status */
+-unsigned int fluid_profile_end_ticks = 0;          /* ending position (in ticks) */
+-fluid_profile_data_t fluid_profile_data[] =        /* Data duration */
+-{
+-    {"synth_write_* ------------>", 1e10, 0.0, 0.0, 0, 0, 0},
+-    {"synth_one_block ---------->", 1e10, 0.0, 0.0, 0, 0, 0},
+-    {"synth_one_block:clear ---->", 1e10, 0.0, 0.0, 0, 0, 0},
+-    {"synth_one_block:one voice->", 1e10, 0.0, 0.0, 0, 0, 0},
+-    {"synth_one_block:all voices>", 1e10, 0.0, 0.0, 0, 0, 0},
+-    {"synth_one_block:reverb --->", 1e10, 0.0, 0.0, 0, 0, 0},
+-    {"synth_one_block:chorus --->", 1e10, 0.0, 0.0, 0, 0, 0},
+-    {"voice:note --------------->", 1e10, 0.0, 0.0, 0, 0, 0},
+-    {"voice:release ------------>", 1e10, 0.0, 0.0, 0, 0, 0}
+-};
+-
+-
+-/*----------------------------------------------
+-  Internal profiling API
+------------------------------------------------*/
+-/* logging profiling data (used on synthesizer instance deletion) */
+-void fluid_profiling_print(void)
+-{
+-    int i;
+-
+-    printf("fluid_profiling_print\n");
+-
+-    FLUID_LOG(FLUID_INFO, "Estimated times: min/avg/max (micro seconds)");
+-
+-    for(i = 0; i < FLUID_PROFILE_NBR; i++)
+-    {
+-        if(fluid_profile_data[i].count > 0)
+-        {
+-            FLUID_LOG(FLUID_INFO, "%s: %.3f/%.3f/%.3f",
+-                      fluid_profile_data[i].description,
+-                      fluid_profile_data[i].min,
+-                      fluid_profile_data[i].total / fluid_profile_data[i].count,
+-                      fluid_profile_data[i].max);
+-        }
+-        else
+-        {
+-            FLUID_LOG(FLUID_DBG, "%s: no profiling available",
+-                      fluid_profile_data[i].description);
+-        }
+-    }
+-}
+-
+-/* Macro that returns cpu load in percent (%)
+- * @dur: duration (micro second).
+- * @sample_rate: sample_rate used in audio driver (Hz).
+- * @n_amples: number of samples collected during 'dur' duration.
+-*/
+-#define fluid_profile_load(dur,sample_rate,n_samples) \
+-        (dur * sample_rate / n_samples / 10000.0)
+-
+-
+-/* prints cpu loads only
+-*
+-* @param sample_rate the sample rate of audio output.
+-* @param out output stream device.
+-*
+-* ------------------------------------------------------------------------------
+-* Cpu loads(%) (sr: 44100 Hz, sp: 22.68 microsecond) and maximum voices
+-* ------------------------------------------------------------------------------
+-* nVoices| total(%)|voices(%)| reverb(%)|chorus(%)| voice(%)|estimated maxVoices
+-* -------|---------|---------|----------|---------|---------|-------------------
+-*     250|   41.544|   41.544|     0.000|    0.000|    0.163|              612
+-*/
+-static void fluid_profiling_print_load(double sample_rate, fluid_ostream_t out)
+-{
+-    unsigned int n_voices; /* voices number */
+-    static const char max_voices_not_available[] = "      not available";
+-    const char *pmax_voices;
+-    char max_voices_available[20];
+-
+-    /* First computes data to be printed */
+-    double  total, voices, reverb, chorus, all_voices, voice;
+-    /* voices number */
+-    n_voices = fluid_profile_data[FLUID_PROF_ONE_BLOCK_VOICES].count ?
+-               fluid_profile_data[FLUID_PROF_ONE_BLOCK_VOICES].n_voices /
+-               fluid_profile_data[FLUID_PROF_ONE_BLOCK_VOICES].count : 0;
+-
+-    /* total load (%) */
+-    total =  fluid_profile_data[FLUID_PROF_WRITE].count ?
+-             fluid_profile_load(fluid_profile_data[FLUID_PROF_WRITE].total, sample_rate,
+-                                fluid_profile_data[FLUID_PROF_WRITE].n_samples) : 0;
+-
+-    /* reverb load (%) */
+-    reverb = fluid_profile_data[FLUID_PROF_ONE_BLOCK_REVERB].count ?
+-             fluid_profile_load(fluid_profile_data[FLUID_PROF_ONE_BLOCK_REVERB].total,
+-                                sample_rate,
+-                                fluid_profile_data[FLUID_PROF_ONE_BLOCK_REVERB].n_samples) : 0;
+-
+-    /* chorus load (%) */
+-    chorus = fluid_profile_data[FLUID_PROF_ONE_BLOCK_CHORUS].count ?
+-             fluid_profile_load(fluid_profile_data[FLUID_PROF_ONE_BLOCK_CHORUS].total,
+-                                sample_rate,
+-                                fluid_profile_data[FLUID_PROF_ONE_BLOCK_CHORUS].n_samples) : 0;
+-
+-    /* total voices load: total - reverb - chorus (%) */
+-    voices = total - reverb - chorus;
+-
+-    /* One voice load (%): all_voices / n_voices. */
+-    all_voices = fluid_profile_data[FLUID_PROF_ONE_BLOCK_VOICES].count ?
+-                 fluid_profile_load(fluid_profile_data[FLUID_PROF_ONE_BLOCK_VOICES].total,
+-                                    sample_rate,
+-                                    fluid_profile_data[FLUID_PROF_ONE_BLOCK_VOICES].n_samples) : 0;
+-
+-    voice = n_voices ?  all_voices / n_voices : 0;
+-
+-    /* estimated maximum voices number */
+-    if(voice > 0)
+-    {
+-        FLUID_SNPRINTF(max_voices_available, sizeof(max_voices_available),
+-                       "%17d", (unsigned int)((100.0 - reverb - chorus) / voice));
+-        pmax_voices = max_voices_available;
+-    }
+-    else
+-    {
+-        pmax_voices = max_voices_not_available;
+-    }
+-
+-    /* Now prints data */
+-    fluid_ostream_printf(out,
+-                         " ------------------------------------------------------------------------------\n");
+-    fluid_ostream_printf(out,
+-                         " Cpu loads(%%) (sr:%6.0f Hz, sp:%6.2f microsecond) and maximum voices\n",
+-                         sample_rate, 1000000.0 / sample_rate);
+-    fluid_ostream_printf(out,
+-                         " ------------------------------------------------------------------------------\n");
+-    fluid_ostream_printf(out,
+-                         " nVoices| total(%%)|voices(%%)| reverb(%%)|chorus(%%)| voice(%%)|estimated maxVoices\n");
+-    fluid_ostream_printf(out,
+-                         " -------|---------|---------|----------|---------|---------|-------------------\n");
+-    fluid_ostream_printf(out,
+-                         "%8d|%9.3f|%9.3f|%10.3f|%9.3f|%9.3f|%s\n", n_voices, total, voices,
+-                         reverb, chorus, voice, pmax_voices);
+-}
+-
+-/*
+-* prints profiling data (used by profile shell command: prof_start).
+-* The function is an internal profiling API between the "profile" command
+-* prof_start and audio rendering API (see FluidProfile_0004.pdf - 3.2.2).
+-*
+-* @param sample_rate the sample rate of audio output.
+-* @param out output stream device.
+-*
+-* When print mode is 1, the function prints all the information (see below).
+-* When print mode is 0, the function prints only the cpu loads.
+-*
+-* ------------------------------------------------------------------------------
+-* Duration(microsecond) and cpu loads(%) (sr: 44100 Hz, sp: 22.68 microsecond)
+-* ------------------------------------------------------------------------------
+-* Code under profiling       |Voices|       Duration (microsecond)   |  Load(%)
+-*                            |   nbr|       min|       avg|       max|
+-* ---------------------------|------|--------------------------------|----------
+-* synth_write_* ------------>|   250|      3.91|   2188.82|   3275.00|  41.544
+-* synth_one_block ---------->|   250|   1150.70|   2273.56|   3241.47|  41.100
+-* synth_one_block:clear ---->|   250|      3.07|      4.62|     61.18|   0.084
+-* synth_one_block:one voice->|     1|      4.19|      9.02|   1044.27|   0.163
+-* synth_one_block:all voices>|   250|   1138.41|   2259.11|   3217.73|  40.839
+-* synth_one_block:reverb --->| no profiling available
+-* synth_one_block:chorus --->| no profiling available
+-* voice:note --------------->| no profiling available
+-* voice:release ------------>| no profiling available
+-* ------------------------------------------------------------------------------
+-* Cpu loads(%) (sr: 44100 Hz, sp: 22.68 microsecond) and maximum voices
+-* ------------------------------------------------------------------------------
+-* nVoices| total(%)|voices(%)| reverb(%)|chorus(%)| voice(%)|estimated maxVoices
+-* -------|---------|---------|----------|---------|---------|-------------------
+-*     250|   41.544|   41.544|     0.000|    0.000|    0.163|              612
+-*/
+-void fluid_profiling_print_data(double sample_rate, fluid_ostream_t out)
+-{
+-    int i;
+-
+-    if(fluid_profile_print)
+-    {
+-        /* print all details: Duration(microsecond) and cpu loads(%) */
+-        fluid_ostream_printf(out,
+-                             " ------------------------------------------------------------------------------\n");
+-        fluid_ostream_printf(out,
+-                             " Duration(microsecond) and cpu loads(%%) (sr:%6.0f Hz, sp:%6.2f microsecond)\n",
+-                             sample_rate, 1000000.0 / sample_rate);
+-        fluid_ostream_printf(out,
+-                             " ------------------------------------------------------------------------------\n");
+-        fluid_ostream_printf(out,
+-                             " Code under profiling       |Voices|       Duration (microsecond)   |  Load(%%)\n");
+-        fluid_ostream_printf(out,
+-                             "                            |   nbr|       min|       avg|       max|\n");
+-        fluid_ostream_printf(out,
+-                             " ---------------------------|------|--------------------------------|----------\n");
+-
+-        for(i = 0; i < FLUID_PROFILE_NBR; i++)
+-        {
+-            unsigned int count = fluid_profile_data[i].count;
+-
+-            if(count > 0)
+-            {
+-                /* data are available */
+-
+-                if(FLUID_PROF_WRITE <= i && i <= FLUID_PROF_ONE_BLOCK_CHORUS)
+-                {
+-                    double load = fluid_profile_load(fluid_profile_data[i].total, sample_rate,
+-                                                     fluid_profile_data[i].n_samples);
+-                    fluid_ostream_printf(out, " %s|%6d|%10.2f|%10.2f|%10.2f|%8.3f\n",
+-                                         fluid_profile_data[i].description, /* code under profiling */
+-                                         fluid_profile_data[i].n_voices / count, /* voices number */
+-                                         fluid_profile_data[i].min,              /* minimum duration */
+-                                         fluid_profile_data[i].total / count,    /* average duration */
+-                                         fluid_profile_data[i].max,              /* maximum duration */
+-                                         load);                                  /* cpu load */
+-                }
+-                else
+-                {
+-                    /* note and release duration */
+-                    fluid_ostream_printf(out, " %s|%6d|%10.0f|%10.0f|%10.0f|\n",
+-                                         fluid_profile_data[i].description, /* code under profiling */
+-                                         fluid_profile_data[i].n_voices / count,
+-                                         fluid_profile_data[i].min,              /* minimum duration */
+-                                         fluid_profile_data[i].total / count,    /* average duration */
+-                                         fluid_profile_data[i].max);             /* maximum duration */
+-                }
+-            }
+-            else
+-            {
+-                /* data aren't available */
+-                fluid_ostream_printf(out,
+-                                     " %s| no profiling available\n", fluid_profile_data[i].description);
+-            }
+-        }
+-    }
+-
+-    /* prints cpu loads only */
+-    fluid_profiling_print_load(sample_rate, out);/* prints cpu loads */
+-}
+-
+-/*
+- Returns true if the user cancels the current profiling measurement.
+- Actually this is implemented using the <ENTER> key. To add this functionality:
+- 1) Adds #define FLUID_PROFILE_CANCEL in fluid_sys.h.
+- 2) Adds the necessary code inside fluid_profile_is_cancel().
+-
+- When FLUID_PROFILE_CANCEL is not defined, the function return FALSE.
+-*/
+-int fluid_profile_is_cancel_req(void)
+-{
+-#ifdef FLUID_PROFILE_CANCEL
+-
+-#if defined(_WIN32)      /* Windows specific stuff */
+-    /* Profile cancellation is supported for Windows */
+-    /* returns TRUE if key <ENTER> is depressed */
+-    return(GetAsyncKeyState(VK_RETURN) & 0x1);
+-
+-#elif defined(__OS2__)  /* OS/2 specific stuff */
+-    /* Profile cancellation isn't yet supported for OS2 */
+-    /* For OS2, replaces the following  line with the function that returns
+-    true when the keyboard key <ENTER> is depressed */
+-    return FALSE; /* default value */
+-
+-#else   /* POSIX stuff */
+-    /* Profile cancellation is supported for Linux */
+-    /* returns true is <ENTER> is depressed */
+-    {
+-        /* Here select() is used to poll the standard input to see if an input
+-         is ready. As the standard input is usually buffered, the user
+-         needs to depress <ENTER> to set the input to a "ready" state.
+-        */
+-        struct timeval tv;
+-        fd_set fds;    /* just one fds need to be polled */
+-        tv.tv_sec = 0; /* Setting both values to 0, means a 0 timeout */
+-        tv.tv_usec = 0;
+-        FD_ZERO(&fds); /* reset fds */
+-        FD_SET(STDIN_FILENO, &fds); /* sets fds to poll standard input only */
+-        select(STDIN_FILENO + 1, &fds, NULL, NULL, &tv); /* polling */
+-        return (FD_ISSET(0, &fds)); /* returns true if standard input is ready */
+-    }
+-#endif /* OS stuff */
+-
+-#else /* FLUID_PROFILE_CANCEL not defined */
+-    return FALSE; /* default value */
+-#endif /* FLUID_PROFILE_CANCEL */
+-}
+-
+-/**
+-* Returns status used in shell command "prof_start".
+-* The function is an internal profiling API between the "profile" command
+-* prof_start and audio rendering API (see FluidProfile_0004.pdf - 3.2.2).
+-*
+-* @return status
+-* - PROFILE_READY profiling data are ready.
+-* - PROFILE_RUNNING, profiling data are still under acquisition.
+-* - PROFILE_CANCELED, acquisition has been cancelled by the user.
+-* - PROFILE_STOP, no acquisition in progress.
+-*
+-* When status is PROFILE_RUNNING, the caller can do passive waiting, or other
+-* work before recalling the function later.
+-*/
+-int fluid_profile_get_status(void)
+-{
+-    /* Checks if user has requested to cancel the current measurement */
+-    /* Cancellation must have precedence over other status */
+-    if(fluid_profile_is_cancel_req())
+-    {
+-        fluid_profile_start_stop(0, 0); /* stops the measurement */
+-        return PROFILE_CANCELED;
+-    }
+-
+-    switch(fluid_profile_status)
+-    {
+-    case PROFILE_READY:
+-        return PROFILE_READY; /* profiling data are ready */
+-
+-    case PROFILE_START:
+-        return PROFILE_RUNNING;/* profiling data are under acquisition */
+-
+-    default:
+-        return PROFILE_STOP;
+-    }
+-}
+-
+-/**
+-*  Starts or stops profiling measurement.
+-*  The function is an internal profiling API between the "profile" command
+-*  prof_start and audio rendering API (see FluidProfile_0004.pdf - 3.2.2).
+-*
+-*  @param end_tick end position of the measure (in ticks).
+-*  - If end_tick is greater then 0, the function starts a measure if a measure
+-*    isn't running. If a measure is already running, the function does nothing
+-*    and returns.
+-*  - If end_tick is 0, the function stops a measure.
+-*  @param clear_data,
+-*  - If clear_data is 0, the function clears fluid_profile_data before starting
+-*    a measure, otherwise, the data from the started measure will be accumulated
+-*    within fluid_profile_data.
+-*/
+-void fluid_profile_start_stop(unsigned int end_ticks, short clear_data)
+-{
+-    if(end_ticks)    /* This is a "start" request */
+-    {
+-        /* Checks if a measure is already running */
+-        if(fluid_profile_status != PROFILE_START)
+-        {
+-            short i;
+-            fluid_profile_end_ticks = end_ticks;
+-
+-            /* Clears profile data */
+-            if(clear_data == 0)
+-            {
+-                for(i = 0; i < FLUID_PROFILE_NBR; i++)
+-                {
+-                    fluid_profile_data[i].min = 1e10;/* min sets to max value */
+-                    fluid_profile_data[i].max = 0;   /* maximum sets to min value */
+-                    fluid_profile_data[i].total = 0; /* total duration microsecond */
+-                    fluid_profile_data[i].count = 0;    /* data count */
+-                    fluid_profile_data[i].n_voices = 0; /* voices number */
+-                    fluid_profile_data[i].n_samples = 0;/* audio samples number */
+-                }
+-            }
+-
+-            fluid_profile_status = PROFILE_START;	/* starts profiling */
+-        }
+-
+-        /* else do nothing when profiling is already started */
+-    }
+-    else /* This is a "stop" request */
+-    {
+-        /* forces the current running profile (if any) to stop */
+-        fluid_profile_status = PROFILE_STOP;	/* stops profiling */
+-    }
+-}
+-
+-#endif /* WITH_PROFILING */
+-
+-/***************************************************************
+- *
+- *               Threads
+- *
+- */
+-
+-#if OLD_GLIB_THREAD_API
+-
+-/* Rather than inline this one, we just declare it as a function, to prevent
+- * GCC warning about inline failure. */
+-fluid_cond_t *
+-new_fluid_cond(void)
+-{
+-    if(!g_thread_supported())
+-    {
+-        g_thread_init(NULL);
+-    }
+-
+-    return g_cond_new();
+-}
+-
+-#endif
+-
+-static gpointer
+-fluid_thread_high_prio(gpointer data)
+-{
+-    fluid_thread_info_t *info = data;
+-
+-    fluid_thread_self_set_prio(info->prio_level);
+-
+-    info->func(info->data);
+-    FLUID_FREE(info);
+-
+-    return NULL;
+-}
+-
+-/**
+- * Create a new thread.
+- * @param func Function to execute in new thread context
+- * @param data User defined data to pass to func
+- * @param prio_level Priority level.  If greater than 0 then high priority scheduling will
+- *   be used, with the given priority level (used by pthreads only).  0 uses normal scheduling.
+- * @param detach If TRUE, 'join' does not work and the thread destroys itself when finished.
+- * @return New thread pointer or NULL on error
+- */
+-fluid_thread_t *
+-new_fluid_thread(const char *name, fluid_thread_func_t func, void *data, int prio_level, int detach)
+-{
+-    GThread *thread;
+-    fluid_thread_info_t *info = NULL;
+-    GError *err = NULL;
+-
+-    g_return_val_if_fail(func != NULL, NULL);
+-
+-#if OLD_GLIB_THREAD_API
+-
+-    /* Make sure g_thread_init has been called.
+-     * Probably not a good idea in a shared library,
+-     * but what can we do *and* remain backwards compatible? */
+-    if(!g_thread_supported())
+-    {
+-        g_thread_init(NULL);
+-    }
+-
+-#endif
+-
+-    if(prio_level > 0)
+-    {
+-        info = FLUID_NEW(fluid_thread_info_t);
+-
+-        if(!info)
+-        {
+-            FLUID_LOG(FLUID_ERR, "Out of memory");
+-            return NULL;
+-        }
+-
+-        info->func = func;
+-        info->data = data;
+-        info->prio_level = prio_level;
+-#if NEW_GLIB_THREAD_API
+-        thread = g_thread_try_new(name, fluid_thread_high_prio, info, &err);
+-#else
+-        thread = g_thread_create(fluid_thread_high_prio, info, detach == FALSE, &err);
+-#endif
+-    }
+-
+-    else
+-    {
+-#if NEW_GLIB_THREAD_API
+-        thread = g_thread_try_new(name, (GThreadFunc)func, data, &err);
+-#else
+-        thread = g_thread_create((GThreadFunc)func, data, detach == FALSE, &err);
+-#endif
+-    }
+-
+-    if(!thread)
+-    {
+-        FLUID_LOG(FLUID_ERR, "Failed to create the thread: %s",
+-                  fluid_gerror_message(err));
+-        g_clear_error(&err);
+-        FLUID_FREE(info);
+-        return NULL;
+-    }
+-
+-#if NEW_GLIB_THREAD_API
+-
+-    if(detach)
+-    {
+-        g_thread_unref(thread);    // Release thread reference, if caller wants to detach
+-    }
+-
+-#endif
+-
+-    return thread;
+-}
+-
+-/**
+- * Frees data associated with a thread (does not actually stop thread).
+- * @param thread Thread to free
+- */
+-void
+-delete_fluid_thread(fluid_thread_t *thread)
+-{
+-    /* Threads free themselves when they quit, nothing to do */
+-}
+-
+-/**
+- * Join a thread (wait for it to terminate).
+- * @param thread Thread to join
+- * @return FLUID_OK
+- */
+-int
+-fluid_thread_join(fluid_thread_t *thread)
+-{
+-    g_thread_join(thread);
+-
+-    return FLUID_OK;
+-}
+-
+-
+-static fluid_thread_return_t
+-fluid_timer_run(void *data)
+-{
+-    fluid_timer_t *timer;
+-    int count = 0;
+-    int cont;
+-    long start;
+-    long delay;
+-
+-    timer = (fluid_timer_t *)data;
+-
+-    /* keep track of the start time for absolute positioning */
+-    start = fluid_curtime();
+-
+-    while(timer->cont)
+-    {
+-        cont = (*timer->callback)(timer->data, fluid_curtime() - start);
+-
+-        count++;
+-
+-        if(!cont)
+-        {
+-            break;
+-        }
+-
+-        /* to avoid incremental time errors, calculate the delay between
+-           two callbacks bringing in the "absolute" time (count *
+-           timer->msec) */
+-        delay = (count * timer->msec) - (fluid_curtime() - start);
+-
+-        if(delay > 0)
+-        {
+-            fluid_msleep(delay);
+-        }
+-    }
+-
+-    FLUID_LOG(FLUID_DBG, "Timer thread finished");
+-    timer->callback = NULL;
+-
+-    if(timer->auto_destroy)
+-    {
+-        FLUID_FREE(timer);
+-    }
+-
+-    return FLUID_THREAD_RETURN_VALUE;
+-}
+-
+-fluid_timer_t *
+-new_fluid_timer(int msec, fluid_timer_callback_t callback, void *data,
+-                int new_thread, int auto_destroy, int high_priority)
+-{
+-    fluid_timer_t *timer;
+-
+-    timer = FLUID_NEW(fluid_timer_t);
+-
+-    if(timer == NULL)
+-    {
+-        FLUID_LOG(FLUID_ERR, "Out of memory");
+-        return NULL;
+-    }
+-
+-    timer->msec = msec;
+-    timer->callback = callback;
+-    timer->data = data;
+-    timer->cont = TRUE ;
+-    timer->thread = NULL;
+-    timer->auto_destroy = auto_destroy;
+-
+-    if(new_thread)
+-    {
+-        timer->thread = new_fluid_thread("timer", fluid_timer_run, timer, high_priority
+-                                         ? FLUID_SYS_TIMER_HIGH_PRIO_LEVEL : 0, FALSE);
+-
+-        if(!timer->thread)
+-        {
+-            FLUID_FREE(timer);
+-            return NULL;
+-        }
+-    }
+-    else
+-    {
+-        fluid_timer_run(timer);   /* Run directly, instead of as a separate thread */
+-
+-        if(auto_destroy)
+-        {
+-            /* do NOT return freed memory */
+-            return NULL;
+-        }
+-    }
+-
+-    return timer;
+-}
+-
+-void
+-delete_fluid_timer(fluid_timer_t *timer)
+-{
+-    int auto_destroy;
+-    fluid_return_if_fail(timer != NULL);
+-
+-    auto_destroy = timer->auto_destroy;
+-
+-    timer->cont = 0;
+-    fluid_timer_join(timer);
+-
+-    /* Shouldn't access timer now if auto_destroy enabled, since it has been destroyed */
+-
+-    if(!auto_destroy)
+-    {
+-        FLUID_FREE(timer);
+-    }
+-}
+-
+-int
+-fluid_timer_join(fluid_timer_t *timer)
+-{
+-    int auto_destroy;
+-
+-    if(timer->thread)
+-    {
+-        auto_destroy = timer->auto_destroy;
+-        fluid_thread_join(timer->thread);
+-
+-        if(!auto_destroy)
+-        {
+-            timer->thread = NULL;
+-        }
+-    }
+-
+-    return FLUID_OK;
+-}
+-
+-int
+-fluid_timer_is_running(const fluid_timer_t *timer)
+-{
+-    // for unit test usage only
+-    return timer->callback != NULL;
+-}
+-
+-long fluid_timer_get_interval(const fluid_timer_t * timer)
+-{
+-    // for unit test usage only
+-    return timer->msec;
+-}
+-
+-
+-/***************************************************************
+- *
+- *               Sockets and I/O
+- *
+- */
+-
+-/**
+- * Get standard in stream handle.
+- * @return Standard in stream.
+- */
+-fluid_istream_t
+-fluid_get_stdin(void)
+-{
+-    return STDIN_FILENO;
+-}
+-
+-/**
+- * Get standard output stream handle.
+- * @return Standard out stream.
+- */
+-fluid_ostream_t
+-fluid_get_stdout(void)
+-{
+-    return STDOUT_FILENO;
+-}
+-
+-/**
+- * Read a line from an input stream.
+- * @return 0 if end-of-stream, -1 if error, non zero otherwise
+- */
+-int
+-fluid_istream_readline(fluid_istream_t in, fluid_ostream_t out, char *prompt,
+-                       char *buf, int len)
+-{
+-#if READLINE_SUPPORT
+-
+-    if(in == fluid_get_stdin())
+-    {
+-        char *line;
+-
+-        line = readline(prompt);
+-
+-        if(line == NULL)
+-        {
+-            return -1;
+-        }
+-
+-        FLUID_SNPRINTF(buf, len, "%s", line);
+-        buf[len - 1] = 0;
+-
+-        if(buf[0] != '\0')
+-        {
+-            add_history(buf);
+-        }
+-
+-        free(line);
+-        return 1;
+-    }
+-    else
+-#endif
+-    {
+-        fluid_ostream_printf(out, "%s", prompt);
+-        return fluid_istream_gets(in, buf, len);
+-    }
+-}
+-
+-/**
+- * Reads a line from an input stream (socket).
+- * @param in The input socket
+- * @param buf Buffer to store data to
+- * @param len Maximum length to store to buf
+- * @return 1 if a line was read, 0 on end of stream, -1 on error
+- */
+-static int
+-fluid_istream_gets(fluid_istream_t in, char *buf, int len)
+-{
+-    char c;
+-    int n;
+-
+-    buf[len - 1] = 0;
+-
+-    while(--len > 0)
+-    {
+-#ifndef _WIN32
+-        n = read(in, &c, 1);
+-
+-        if(n == -1)
+-        {
+-            return -1;
+-        }
+-
+-#else
+-
+-        /* Handle read differently depending on if its a socket or file descriptor */
+-        if(!(in & FLUID_SOCKET_FLAG))
+-        {
+-            // usually read() is supposed to return '\n' as last valid character of the user input
+-            // when compiled with compatibility for WinXP however, read() may return 0 (EOF) rather than '\n'
+-            // this would cause the shell to exit early
+-            n = read(in, &c, 1);
+-
+-            if(n == -1)
+-            {
+-                return -1;
+-            }
+-        }
+-        else
+-        {
+-#ifdef NETWORK_SUPPORT
+-            n = recv(in & ~FLUID_SOCKET_FLAG, &c, 1, 0);
+-            if(n == SOCKET_ERROR)
+-#endif
+-            {
+-                return -1;
+-            }
+-        }
+-
+-#endif
+-
+-        if(n == 0)
+-        {
+-            *buf = 0;
+-            // return 1 if read from stdin, else 0, to fix early exit of shell
+-            return (in == STDIN_FILENO);
+-        }
+-
+-        if(c == '\n')
+-        {
+-            *buf = 0;
+-            return 1;
+-        }
+-
+-        /* Store all characters excluding CR */
+-        if(c != '\r')
+-        {
+-            *buf++ = c;
+-        }
+-    }
+-
+-    return -1;
+-}
+-
+-/**
+- * Send a printf style string with arguments to an output stream (socket).
+- * @param out Output stream
+- * @param format printf style format string
+- * @param ... Arguments for the printf format string
+- * @return Number of bytes written or -1 on error
+- */
+-int
+-fluid_ostream_printf(fluid_ostream_t out, const char *format, ...)
+-{
+-    char buf[4096];
+-    va_list args;
+-    int len;
+-
+-    va_start(args, format);
+-    len = FLUID_VSNPRINTF(buf, 4095, format, args);
+-    va_end(args);
+-
+-    if(len == 0)
+-    {
+-        return 0;
+-    }
+-
+-    if(len < 0)
+-    {
+-        printf("fluid_ostream_printf: buffer overflow");
+-        return -1;
+-    }
+-
+-    buf[4095] = 0;
+-
+-#ifndef _WIN32
+-    return write(out, buf, FLUID_STRLEN(buf));
+-#else
+-    {
+-        int retval;
+-
+-        /* Handle write differently depending on if its a socket or file descriptor */
+-        if(!(out & FLUID_SOCKET_FLAG))
+-        {
+-            return write(out, buf, (unsigned int)FLUID_STRLEN(buf));
+-        }
+-
+-#ifdef NETWORK_SUPPORT
+-        /* Socket */
+-        retval = send(out & ~FLUID_SOCKET_FLAG, buf, (int)FLUID_STRLEN(buf), 0);
+-        return retval != SOCKET_ERROR ? retval : -1;
+-#else
+-        return -1;
+-#endif
+-    }
+-#endif
+-}
+-
+-#ifdef NETWORK_SUPPORT
+-
+-int fluid_server_socket_join(fluid_server_socket_t *server_socket)
+-{
+-    return fluid_thread_join(server_socket->thread);
+-}
+-
+-static int fluid_socket_init(void)
+-{
+-#ifdef _WIN32
+-    WSADATA wsaData;
+-    int res = WSAStartup(MAKEWORD(2, 2), &wsaData);
+-
+-    if(res != 0)
+-    {
+-        FLUID_LOG(FLUID_ERR, "Server socket creation error: WSAStartup failed: %d", res);
+-        return FLUID_FAILED;
+-    }
+-
+-#endif
+-
+-    return FLUID_OK;
+-}
+-
+-static void fluid_socket_cleanup(void)
+-{
+-#ifdef _WIN32
+-    WSACleanup();
+-#endif
+-}
+-
+-static int fluid_socket_get_error(void)
+-{
+-#ifdef _WIN32
+-    return (int)WSAGetLastError();
+-#else
+-    return errno;
+-#endif
+-}
+-
+-fluid_istream_t fluid_socket_get_istream(fluid_socket_t sock)
+-{
+-    return sock | FLUID_SOCKET_FLAG;
+-}
+-
+-fluid_ostream_t fluid_socket_get_ostream(fluid_socket_t sock)
+-{
+-    return sock | FLUID_SOCKET_FLAG;
+-}
+-
+-void fluid_socket_close(fluid_socket_t sock)
+-{
+-    if(sock != INVALID_SOCKET)
+-    {
+-#ifdef _WIN32
+-        closesocket(sock);
+-
+-#else
+-        close(sock);
+-#endif
+-    }
+-}
+-
+-static fluid_thread_return_t fluid_server_socket_run(void *data)
+-{
+-    fluid_server_socket_t *server_socket = (fluid_server_socket_t *)data;
+-    fluid_socket_t client_socket;
+-#ifdef IPV6_SUPPORT
+-    struct sockaddr_in6 addr;
+-#else
+-    struct sockaddr_in addr;
+-#endif
+-
+-#ifdef HAVE_INETNTOP
+-#ifdef IPV6_SUPPORT
+-    char straddr[INET6_ADDRSTRLEN];
+-#else
+-    char straddr[INET_ADDRSTRLEN];
+-#endif /* IPV6_SUPPORT */
+-#endif /* HAVE_INETNTOP */
+-
+-    socklen_t addrlen = sizeof(addr);
+-    int r;
+-    FLUID_MEMSET((char *)&addr, 0, sizeof(addr));
+-
+-    FLUID_LOG(FLUID_DBG, "Server listening for connections");
+-
+-    while(server_socket->cont)
+-    {
+-        client_socket = accept(server_socket->socket, (struct sockaddr *)&addr, &addrlen);
+-
+-        FLUID_LOG(FLUID_DBG, "New client connection");
+-
+-        if(client_socket == INVALID_SOCKET)
+-        {
+-            if(server_socket->cont)
+-            {
+-                FLUID_LOG(FLUID_ERR, "Got error %d while trying to accept connection", fluid_socket_get_error());
+-            }
+-
+-            server_socket->cont = 0;
+-            return FLUID_THREAD_RETURN_VALUE;
+-        }
+-        else
+-        {
+-#ifdef HAVE_INETNTOP
+-
+-#ifdef IPV6_SUPPORT
+-            inet_ntop(AF_INET6, &addr.sin6_addr, straddr, sizeof(straddr));
+-#else
+-            inet_ntop(AF_INET, &addr.sin_addr, straddr, sizeof(straddr));
+-#endif
+-
+-            r = server_socket->func(server_socket->data, client_socket,
+-                                    straddr);
+-#else
+-            r = server_socket->func(server_socket->data, client_socket,
+-                                    inet_ntoa(addr.sin_addr));
+-#endif
+-
+-            if(r != 0)
+-            {
+-                fluid_socket_close(client_socket);
+-            }
+-        }
+-    }
+-
+-    FLUID_LOG(FLUID_DBG, "Server closing");
+-
+-    return FLUID_THREAD_RETURN_VALUE;
+-}
+-
+-fluid_server_socket_t *
+-new_fluid_server_socket(int port, fluid_server_func_t func, void *data)
+-{
+-    fluid_server_socket_t *server_socket;
+-    struct sockaddr_in addr4;
+-#ifdef IPV6_SUPPORT
+-    struct sockaddr_in6 addr6;
+-#endif
+-    const struct sockaddr *addr;
+-    size_t addr_size;
+-    fluid_socket_t sock;
+-
+-    fluid_return_val_if_fail(func != NULL, NULL);
+-
+-    if(fluid_socket_init() != FLUID_OK)
+-    {
+-        return NULL;
+-    }
+-
+-    FLUID_MEMSET(&addr4, 0, sizeof(addr4));
+-    addr4.sin_family = AF_INET;
+-    addr4.sin_port = htons((uint16_t)port);
+-    addr4.sin_addr.s_addr = htonl(INADDR_ANY);
+-
+-#ifdef IPV6_SUPPORT
+-    FLUID_MEMSET(&addr6, 0, sizeof(addr6));
+-    addr6.sin6_family = AF_INET6;
+-    addr6.sin6_port = htons((uint16_t)port);
+-    addr6.sin6_addr = in6addr_any;
+-#endif
+-
+-#ifdef IPV6_SUPPORT
+-    sock = socket(AF_INET6, SOCK_STREAM, 0);
+-    addr = (const struct sockaddr *) &addr6;
+-    addr_size = sizeof(addr6);
+-
+-    if(sock == INVALID_SOCKET)
+-    {
+-        FLUID_LOG(FLUID_WARN, "Got error %d while trying to create IPv6 server socket (will try with IPv4)", fluid_socket_get_error());
+-
+-        sock = socket(AF_INET, SOCK_STREAM, 0);
+-        addr = (const struct sockaddr *) &addr4;
+-        addr_size = sizeof(addr4);
+-    }
+-
+-#else
+-    sock = socket(AF_INET, SOCK_STREAM, 0);
+-    addr = (const struct sockaddr *) &addr4;
+-    addr_size = sizeof(addr4);
+-#endif
+-
+-    if(sock == INVALID_SOCKET)
+-    {
+-        FLUID_LOG(FLUID_ERR, "Got error %d while trying to create server socket", fluid_socket_get_error());
+-        fluid_socket_cleanup();
+-        return NULL;
+-    }
+-    
+-    if(bind(sock, addr, (int) addr_size) == SOCKET_ERROR)
+-    {
+-        FLUID_LOG(FLUID_ERR, "Got error %d while trying to bind server socket", fluid_socket_get_error());
+-        fluid_socket_close(sock);
+-        fluid_socket_cleanup();
+-        return NULL;
+-    }
+-
+-    if(listen(sock, SOMAXCONN) == SOCKET_ERROR)
+-    {
+-        FLUID_LOG(FLUID_ERR, "Got error %d while trying to listen on server socket", fluid_socket_get_error());
+-        fluid_socket_close(sock);
+-        fluid_socket_cleanup();
+-        return NULL;
+-    }
+-
+-    server_socket = FLUID_NEW(fluid_server_socket_t);
+-
+-    if(server_socket == NULL)
+-    {
+-        FLUID_LOG(FLUID_ERR, "Out of memory");
+-        fluid_socket_close(sock);
+-        fluid_socket_cleanup();
+-        return NULL;
+-    }
+-
+-    server_socket->socket = sock;
+-    server_socket->func = func;
+-    server_socket->data = data;
+-    server_socket->cont = 1;
+-
+-    server_socket->thread = new_fluid_thread("server", fluid_server_socket_run, server_socket,
+-                            0, FALSE);
+-
+-    if(server_socket->thread == NULL)
+-    {
+-        FLUID_FREE(server_socket);
+-        fluid_socket_close(sock);
+-        fluid_socket_cleanup();
+-        return NULL;
+-    }
+-
+-    return server_socket;
+-}
+-
+-void delete_fluid_server_socket(fluid_server_socket_t *server_socket)
+-{
+-    fluid_return_if_fail(server_socket != NULL);
+-
+-    server_socket->cont = 0;
+-
+-    if(server_socket->socket != INVALID_SOCKET)
+-    {
+-        fluid_socket_close(server_socket->socket);
+-    }
+-
+-    if(server_socket->thread)
+-    {
+-        fluid_thread_join(server_socket->thread);
+-        delete_fluid_thread(server_socket->thread);
+-    }
+-
+-    FLUID_FREE(server_socket);
+-
+-    // Should be called the same number of times as fluid_socket_init()
+-    fluid_socket_cleanup();
+-}
+-
+-#endif // NETWORK_SUPPORT
+-
+-FILE* fluid_file_open(const char* path, const char** errMsg)
+-{
+-    static const char ErrExist[] = "File does not exist.";
+-    static const char ErrRegular[] = "File is not regular, refusing to open it.";
+-    static const char ErrNull[] = "File does not exists or insufficient permissions to open it.";
+-    
+-    FILE* handle = NULL;
+-    
+-    if(!fluid_file_test(path, FLUID_FILE_TEST_EXISTS))
+-    {
+-        if(errMsg != NULL)
+-        {
+-            *errMsg = ErrExist;
+-        }
+-    }
+-    else if(!fluid_file_test(path, FLUID_FILE_TEST_IS_REGULAR))
+-    {
+-        if(errMsg != NULL)
+-        {
+-            *errMsg = ErrRegular;
+-        }
+-    }
+-    else if((handle = FLUID_FOPEN(path, "rb")) == NULL)
+-    {
+-        if(errMsg != NULL)
+-        {
+-            *errMsg = ErrNull;
+-        }
+-    }
+-    
+-    return handle;
+-}
+-
+-fluid_long_long_t fluid_file_tell(FILE* f)
+-{
+-#ifdef _WIN32
+-    // On Windows, long is only a 32 bit integer. Thus ftell() does not support to handle files >2GiB.
+-    // We should use _ftelli64() in this case, however its availability depends on MS CRT and might not be
+-    // available on WindowsXP, Win98, etc.
+-    //
+-    // The web recommends to fallback to _telli64() in this case. However, it's return value differs from
+-    // _ftelli64() on Win10: https://github.com/FluidSynth/fluidsynth/pull/629#issuecomment-602238436
+-    //
+-    // Thus, we use fgetpos().
+-    fpos_t pos;
+-    if(fgetpos(f, &pos) != 0)
+-    {
+-        return (fluid_long_long_t)-1L;
+-    }
+-    return pos;
+-#else
+-    return ftell(f);
+-#endif
+-}
+-
+-#if defined(_WIN32) || defined(__CYGWIN__)
+-// not thread-safe!
+-#define FLUID_WINDOWS_MEX_ERROR_LEN    1024
+-
+-char* fluid_get_windows_error(void)
+-{
+-#ifdef _UNICODE
+-    TCHAR err[FLUID_WINDOWS_MEX_ERROR_LEN];
+-    static char ascii_err[FLUID_WINDOWS_MEX_ERROR_LEN];
+-#else
+-    static TCHAR err[FLUID_WINDOWS_MEX_ERROR_LEN];
+-#endif
+-
+-    FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM,
+-                  NULL,
+-                  GetLastError(),
+-                  MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US),
+-                  err,
+-                  sizeof(err)/sizeof(err[0]),
+-                  NULL);
+-
+-#ifdef _UNICODE
+-    WideCharToMultiByte(CP_UTF8, 0, err, -1, ascii_err, sizeof(ascii_err)/sizeof(ascii_err[0]), 0, 0);
+-    return ascii_err;
+-#else
+-    return err;
+-#endif
+-}
+-#endif
+diff --git a/src/utils/fluid_sys.h b/src/utils/fluid_sys.h
+index f491254d..e6e62794 100644
+--- a/src/utils/fluid_sys.h
++++ b/src/utils/fluid_sys.h
+@@ -175,7 +175,8 @@ typedef gintptr  intptr_t;
+ #include <gmodule.h>
+ #endif
+ 
+-#include <glib/gstdio.h>
++#define TRUE 1
++#define FALSE 0
+ 
+ #ifdef __cplusplus
+ extern "C" {
+@@ -204,10 +205,10 @@ char* fluid_get_windows_error(void);
+ #define FLUID_INT_TO_POINTER(x)   ((void *)(intptr_t)(x))
+ 
+ /* Endian detection */
+-#define FLUID_IS_BIG_ENDIAN       (G_BYTE_ORDER == G_BIG_ENDIAN)
++#define FLUID_IS_BIG_ENDIAN       FALSE
+ 
+-#define FLUID_LE32TOH(x)          GINT32_FROM_LE(x)
+-#define FLUID_LE16TOH(x)          GINT16_FROM_LE(x)
++#define FLUID_LE32TOH(x)          x
++#define FLUID_LE16TOH(x)          x
+ 
+ #if FLUID_IS_BIG_ENDIAN
+ #define FLUID_FOURCC(_a, _b, _c, _d) \
+@@ -259,224 +260,62 @@ typedef int (*fluid_timer_callback_t)(void *data, unsigned int msec);
+ 
+ typedef struct _fluid_timer_t fluid_timer_t;
+ 
+-fluid_timer_t *new_fluid_timer(int msec, fluid_timer_callback_t callback,
+-                               void *data, int new_thread, int auto_destroy,
+-                               int high_priority);
+-
+-void delete_fluid_timer(fluid_timer_t *timer);
+-int fluid_timer_join(fluid_timer_t *timer);
+-int fluid_timer_stop(fluid_timer_t *timer);
+-int fluid_timer_is_running(const fluid_timer_t *timer);
+-long fluid_timer_get_interval(const fluid_timer_t * timer);
+-
+-// Macros to use for pre-processor if statements to test which Glib thread API we have (pre or post 2.32)
+-#define NEW_GLIB_THREAD_API   GLIB_CHECK_VERSION(2,32,0)
+-#define OLD_GLIB_THREAD_API  !GLIB_CHECK_VERSION(2,32,0)
+-
+-/* Muteces */
+-
+-#if NEW_GLIB_THREAD_API
+-
+-/* glib 2.32 and newer */
+-
+-/* Regular mutex */
+-typedef GMutex fluid_mutex_t;
+-#define FLUID_MUTEX_INIT          { 0 }
+-#define fluid_mutex_init(_m)      g_mutex_init (&(_m))
+-#define fluid_mutex_destroy(_m)   g_mutex_clear (&(_m))
+-#define fluid_mutex_lock(_m)      g_mutex_lock(&(_m))
+-#define fluid_mutex_unlock(_m)    g_mutex_unlock(&(_m))
+-
+-/* Recursive lock capable mutex */
+-typedef GRecMutex fluid_rec_mutex_t;
+-#define fluid_rec_mutex_init(_m)      g_rec_mutex_init(&(_m))
+-#define fluid_rec_mutex_destroy(_m)   g_rec_mutex_clear(&(_m))
+-#define fluid_rec_mutex_lock(_m)      g_rec_mutex_lock(&(_m))
+-#define fluid_rec_mutex_unlock(_m)    g_rec_mutex_unlock(&(_m))
+-
+-/* Dynamically allocated mutex suitable for fluid_cond_t use */
+-typedef GMutex    fluid_cond_mutex_t;
+-#define fluid_cond_mutex_lock(m)        g_mutex_lock(m)
+-#define fluid_cond_mutex_unlock(m)      g_mutex_unlock(m)
+-
+-static FLUID_INLINE fluid_cond_mutex_t *
+-new_fluid_cond_mutex(void)
+-{
+-    GMutex *mutex;
+-    mutex = g_new(GMutex, 1);
+-    g_mutex_init(mutex);
+-    return (mutex);
+-}
+-
+-static FLUID_INLINE void
+-delete_fluid_cond_mutex(fluid_cond_mutex_t *m)
+-{
+-    fluid_return_if_fail(m != NULL);
+-    g_mutex_clear(m);
+-    g_free(m);
+-}
+-
+-/* Thread condition signaling */
+-typedef GCond fluid_cond_t;
+-#define fluid_cond_signal(cond)         g_cond_signal(cond)
+-#define fluid_cond_broadcast(cond)      g_cond_broadcast(cond)
+-#define fluid_cond_wait(cond, mutex)    g_cond_wait(cond, mutex)
+-
+-static FLUID_INLINE fluid_cond_t *
+-new_fluid_cond(void)
+-{
+-    GCond *cond;
+-    cond = g_new(GCond, 1);
+-    g_cond_init(cond);
+-    return (cond);
+-}
+-
+-static FLUID_INLINE void
+-delete_fluid_cond(fluid_cond_t *cond)
+-{
+-    fluid_return_if_fail(cond != NULL);
+-    g_cond_clear(cond);
+-    g_free(cond);
+-}
+-
+-/* Thread private data */
+-
+-typedef GPrivate fluid_private_t;
+-#define fluid_private_init(_priv)                  memset (&_priv, 0, sizeof (_priv))
+-#define fluid_private_free(_priv)
+-#define fluid_private_get(_priv)                   g_private_get(&(_priv))
+-#define fluid_private_set(_priv, _data)            g_private_set(&(_priv), _data)
+-
+-#else
+-
+-/* glib prior to 2.32 */
+-
+-/* Regular mutex */
+-typedef GStaticMutex fluid_mutex_t;
+-#define FLUID_MUTEX_INIT          G_STATIC_MUTEX_INIT
+-#define fluid_mutex_destroy(_m)   g_static_mutex_free(&(_m))
+-#define fluid_mutex_lock(_m)      g_static_mutex_lock(&(_m))
+-#define fluid_mutex_unlock(_m)    g_static_mutex_unlock(&(_m))
+-
+-#define fluid_mutex_init(_m)      do { \
+-  if (!g_thread_supported ()) g_thread_init (NULL); \
+-  g_static_mutex_init (&(_m)); \
+-} while(0)
+-
+-/* Recursive lock capable mutex */
+-typedef GStaticRecMutex fluid_rec_mutex_t;
+-#define fluid_rec_mutex_destroy(_m)   g_static_rec_mutex_free(&(_m))
+-#define fluid_rec_mutex_lock(_m)      g_static_rec_mutex_lock(&(_m))
+-#define fluid_rec_mutex_unlock(_m)    g_static_rec_mutex_unlock(&(_m))
+-
+-#define fluid_rec_mutex_init(_m)      do { \
+-  if (!g_thread_supported ()) g_thread_init (NULL); \
+-  g_static_rec_mutex_init (&(_m)); \
+-} while(0)
+-
+-/* Dynamically allocated mutex suitable for fluid_cond_t use */
+-typedef GMutex    fluid_cond_mutex_t;
+-#define delete_fluid_cond_mutex(m)      g_mutex_free(m)
+-#define fluid_cond_mutex_lock(m)        g_mutex_lock(m)
+-#define fluid_cond_mutex_unlock(m)      g_mutex_unlock(m)
+-
+-static FLUID_INLINE fluid_cond_mutex_t *
+-new_fluid_cond_mutex(void)
+-{
+-    if(!g_thread_supported())
+-    {
+-        g_thread_init(NULL);
+-    }
+-
+-    return g_mutex_new();
+-}
+-
+-/* Thread condition signaling */
+-typedef GCond fluid_cond_t;
+-fluid_cond_t *new_fluid_cond(void);
+-#define delete_fluid_cond(cond)         g_cond_free(cond)
+-#define fluid_cond_signal(cond)         g_cond_signal(cond)
+-#define fluid_cond_broadcast(cond)      g_cond_broadcast(cond)
+-#define fluid_cond_wait(cond, mutex)    g_cond_wait(cond, mutex)
+-
+-/* Thread private data */
+-typedef GStaticPrivate fluid_private_t;
+-#define fluid_private_get(_priv)                   g_static_private_get(&(_priv))
+-#define fluid_private_set(_priv, _data)            g_static_private_set(&(_priv), _data, NULL)
+-#define fluid_private_free(_priv)                  g_static_private_free(&(_priv))
+-
+-#define fluid_private_init(_priv)                  do { \
+-  if (!g_thread_supported ()) g_thread_init (NULL); \
+-  g_static_private_init (&(_priv)); \
+-} while(0)
+-
+-#endif
+-
+ 
+ /* Atomic operations */
+-
+-#define fluid_atomic_int_inc(_pi) g_atomic_int_inc(_pi)
+-#define fluid_atomic_int_get(_pi) g_atomic_int_get(_pi)
+-#define fluid_atomic_int_set(_pi, _val) g_atomic_int_set(_pi, _val)
+-#define fluid_atomic_int_dec_and_test(_pi) g_atomic_int_dec_and_test(_pi)
+-#define fluid_atomic_int_compare_and_exchange(_pi, _old, _new) \
+-  g_atomic_int_compare_and_exchange(_pi, _old, _new)
+-
+-#if GLIB_MAJOR_VERSION > 2 || (GLIB_MAJOR_VERSION == 2 && GLIB_MINOR_VERSION >= 30)
+-#define fluid_atomic_int_exchange_and_add(_pi, _add) \
+-  g_atomic_int_add(_pi, _add)
+-#define fluid_atomic_int_add(_pi, _add) \
+-  g_atomic_int_add(_pi, _add)
+-#else
+-#define fluid_atomic_int_exchange_and_add(_pi, _add) \
+-  g_atomic_int_exchange_and_add(_pi, _add)
+-#define fluid_atomic_int_add(_pi, _add) \
+-  g_atomic_int_exchange_and_add(_pi, _add)
+-#endif
+-
+-#define fluid_atomic_pointer_get(_pp)           g_atomic_pointer_get(_pp)
+-#define fluid_atomic_pointer_set(_pp, val)      g_atomic_pointer_set(_pp, val)
+-#define fluid_atomic_pointer_compare_and_exchange(_pp, _old, _new) \
+-  g_atomic_pointer_compare_and_exchange(_pp, _old, _new)
+-
+-static FLUID_INLINE void
+-fluid_atomic_float_set(fluid_atomic_float_t *fptr, float val)
+-{
+-    int32_t ival;
+-    memcpy(&ival, &val, 4);
+-    fluid_atomic_int_set((fluid_atomic_int_t *)fptr, ival);
+-}
+-
+-static FLUID_INLINE float
+-fluid_atomic_float_get(fluid_atomic_float_t *fptr)
+-{
+-    int32_t ival;
+-    float fval;
+-    ival = fluid_atomic_int_get((fluid_atomic_int_t *)fptr);
+-    memcpy(&fval, &ival, 4);
+-    return fval;
+-}
+-
++#define fluid_atomic_int_inc(atomic) \
++    (__extension__({ __atomic_fetch_add((atomic), 1, __ATOMIC_SEQ_CST); }))
++
++#define fluid_atomic_int_get(atomic)                                  \
++    (__extension__({                                                  \
++        int gaig_temp;                                                \
++        __atomic_load((int *)(atomic), &gaig_temp, __ATOMIC_SEQ_CST); \
++        gaig_temp;                                                    \
++    }))
++
++#define fluid_atomic_int_set(atomic, newval)                           \
++    (__extension__({                                                   \
++        int gais_temp = (int)(newval);                                 \
++        __atomic_store((int *)(atomic), &gais_temp, __ATOMIC_SEQ_CST); \
++    }))
++
++#define fluid_atomic_int_compare_and_exchange(atomic, oldval, newval)                                                \
++    (__extension__({                                                                                                 \
++        int gaicae_oldval = (oldval);                                                                                \
++        __atomic_compare_exchange_n((atomic), &gaicae_oldval, (newval), FALSE, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST) ? \
++        TRUE :                                                                                                       \
++        FALSE;                                                                                                       \
++    }))
++
++#define fluid_atomic_int_exchange_and_add(atomic, val) fluid_atomic_int_add(atomic, val)
++
++#define fluid_atomic_int_add(atomic, val) \
++    (__extension__({ (int)__atomic_fetch_add((atomic), (val), __ATOMIC_SEQ_CST); }))
++
++#define fluid_atomic_float_get(atomic) (*atomic)
++#define fluid_atomic_float_set(atomic, newval) (*atomic = newval)
++
++typedef char fluid_mutex_t;
++#define FLUID_MUTEX_INIT { 0 }
++#define fluid_mutex_init(mutex) (void)mutex
++#define fluid_mutex_destroy(mutex) (void)mutex
++#define fluid_mutex_lock(mutex) (void)mutex
++#define fluid_mutex_unlock(mutex) (void)mutex
++
++typedef char fluid_rec_mutex_t;
++#define fluid_rec_mutex_init(mutex) (void)mutex
++#define fluid_rec_mutex_destroy(mutex) (void)mutex
++#define fluid_rec_mutex_lock(mutex) (void)mutex
++#define fluid_rec_mutex_unlock(mutex) (void)mutex
++
++typedef void* fluid_private_t;
++#define fluid_private_init(priv) memset(&priv, 0, sizeof (priv))
++#define fluid_private_get(priv) ((void*)priv)
++#define fluid_private_set(priv, data) (priv = (void*)data)
++#define fluid_private_free(priv)
+ 
+ /* Threads */
+ 
+-/* other thread implementations might change this for their needs */
+-typedef void *fluid_thread_return_t;
+-/* static return value for thread functions which requires a return value */
+-#define FLUID_THREAD_RETURN_VALUE (NULL)
+-
+-typedef GThread fluid_thread_t;
+-typedef fluid_thread_return_t (*fluid_thread_func_t)(void *data);
+-
+-#define FLUID_THREAD_ID_NULL            NULL                    /* A NULL "ID" value */
+-#define fluid_thread_id_t               GThread *               /* Data type for a thread ID */
+-#define fluid_thread_get_id()           g_thread_self()         /* Get unique "ID" for current thread */
+-
+-fluid_thread_t *new_fluid_thread(const char *name, fluid_thread_func_t func, void *data,
+-                                 int prio_level, int detach);
+-void delete_fluid_thread(fluid_thread_t *thread);
+-void fluid_thread_self_set_prio(int prio_level);
+-int fluid_thread_join(fluid_thread_t *thread);
++typedef char fluid_thread_t;
+ 
+ /* Dynamic Module Loading, currently only used by LADSPA subsystem */
+ #ifdef LADSPA
+@@ -515,25 +354,9 @@ fluid_istream_t fluid_socket_get_istream(fluid_socket_t sock);
+ fluid_ostream_t fluid_socket_get_ostream(fluid_socket_t sock);
+ 
+ /* File access */
+-#define fluid_stat(_filename, _statbuf)   g_stat((_filename), (_statbuf))
+-#if !GLIB_CHECK_VERSION(2, 26, 0)
+-    /* GStatBuf has not been introduced yet, manually typedef to what they had at that time:
+-     * https://github.com/GNOME/glib/blob/e7763678b56e3be073cc55d707a6e92fc2055ee0/glib/gstdio.h#L98-L115
+-     */
+-    #if defined(_WIN32) || HAVE_WINDOWS_H // somehow reliably mock G_OS_WIN32??
+-        // Any effort from our side to reliably mock GStatBuf on Windows is in vain. E.g. glib-2.16 is broken as it uses struct stat rather than struct _stat32 on Win x86.
+-        // Disable it (the user has been warned by cmake).
+-        #undef fluid_stat
+-        #define fluid_stat(_filename, _statbuf)  (-1)
+-        typedef struct _fluid_stat_buf_t{int st_mtime;} fluid_stat_buf_t;
+-    #else
+-        /* posix, OS/2, etc. */
+-        typedef struct stat fluid_stat_buf_t;
+-    #endif
+-#else
+-typedef GStatBuf fluid_stat_buf_t;
+-#endif
+-
++#define fluid_stat(filename, buf) stat(filename, buf)
++typedef struct stat fluid_stat_buf_t;
++ 
+ FILE* fluid_file_open(const char* filename, const char** errMsg);
+ fluid_long_long_t fluid_file_tell(FILE* f);
+ 
+diff --git a/src/utils/fluidsynth_priv.h b/src/utils/fluidsynth_priv.h
+index 67e97abb..ee4f34ee 100644
+--- a/src/utils/fluidsynth_priv.h
++++ b/src/utils/fluidsynth_priv.h
+@@ -31,7 +31,8 @@
+ 
+ #include "config.h"
+ 
+-#include <glib.h>
++#define TRUE 1
++#define FALSE 0
+ 
+ #if HAVE_STDLIB_H
+ #include <stdlib.h> // malloc, free
+@@ -188,13 +189,14 @@ typedef void (*fluid_rvoice_function_t)(void *obj, const fluid_rvoice_param_t pa
+ 
+ /* Memory allocation */
+ #define FLUID_MALLOC(_n)             fluid_alloc(_n)
+-#define FLUID_REALLOC(_p,_n)         realloc(_p,_n)
++#define FLUID_REALLOC(_p,_n)         fluid_realloc(_p,_n)
+ #define FLUID_FREE(_p)               fluid_free(_p)
+ #define FLUID_NEW(_t)                (_t*)FLUID_MALLOC(sizeof(_t))
+ #define FLUID_ARRAY_ALIGNED(_t,_n,_a) (_t*)FLUID_MALLOC((_n)*sizeof(_t) + ((unsigned int)_a - 1u))
+ #define FLUID_ARRAY(_t,_n)           FLUID_ARRAY_ALIGNED(_t,_n,1u)
+ 
+ void* fluid_alloc(size_t len);
++void* fluid_realloc(void* ptr, size_t len);
+ 
+ /* File access */
+ #define FLUID_FOPEN(_f,_m)           fluid_fopen(_f,_m)
+@@ -296,8 +298,8 @@ do { strncpy(_dst,_src,_n-1); \
+ #define FLUID_ASSERT(a)
+ #endif
+ 
+-#define FLUID_LIKELY G_LIKELY
+-#define FLUID_UNLIKELY G_UNLIKELY
++#define FLUID_LIKELY(cond) __builtin_expect((cond), 1)
++#define FLUID_UNLIKELY(cond) __builtin_expect((cond), 0)
+ 
+ /* Misc */
+ #if defined(__INTEL_COMPILER)

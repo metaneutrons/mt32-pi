@@ -1,0 +1,17 @@
+diff --git a/configure b/configure
+index 8cc85eb..ffc2308 100755
+--- a/configure
++++ b/configure
+@@ -110,6 +110,12 @@ then
+     STDDEF_INCPATH=$(echo | "$CC" -v -x c -E - 2>&1 | grep "^ /.*include$" | head -1 | sed -e "s/ //")
+ fi
+ 
++if [ "$STDDEF_INCPATH" = "" ]
++then
++    # TODO this is probably very GCC-specific and MinGW-specific
++    STDDEF_INCPATH=$(echo | "$CC" -v -x c -E - 2>&1 | grep "^ [a-z]:.*include$" | head -1  | sed -e 's/ \([a-z]\):/\/\1/' -e 's/\\/\//g')
++fi
++
+ if [ ! -f "$STDDEF_INCPATH/stddef.h" ]
+ then
+     echo "Error: Unable to determine include path for stddef.h, exiting" >&2

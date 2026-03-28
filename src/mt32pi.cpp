@@ -109,7 +109,7 @@ CMT32Pi::CMT32Pi(CI2CMaster* pI2CMaster, CSPIMaster* pSPIMaster, CInterruptSyste
 	  m_nActiveSenseTime(0),
 
 	  m_bRunning(true),
-	  m_bUITaskDone(false),
+	  m_bUITaskDone(true), //Init as "done" before spawned, reset to false while spawn
 	  m_bLEDOn(false),
 	  m_nLEDOnTime(0),
 
@@ -132,6 +132,10 @@ bool CMT32Pi::Initialize(bool bSerialMIDIAvailable)
 {
 	m_bSerialMIDIAvailable = bSerialMIDIAvailable;
 	m_bSerialMIDIEnabled = bSerialMIDIAvailable;
+
+	//Wipe error buffer;
+	char Buffer[LOGGER_BUFSIZE];
+	CLogger::Get()->Read(Buffer, sizeof(Buffer), true);
 
 	switch (m_pConfig->LCDType)
 	{
@@ -501,7 +505,7 @@ void CMT32Pi::MainTask()
 void CMT32Pi::UITask()
 {
 	LOGNOTE("UI task on Core 1 starting up");
-
+	m_bUITaskDone = false;
 	const bool bMisterEnabled = m_pConfig->ControlMister;
 
 	// Nothing for this core to do; bail out

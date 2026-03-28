@@ -138,8 +138,8 @@ namespace Utility
 	{
 		u8 Buffer[sizeof(T)];
 		memcpy(Buffer, &ObjectA, sizeof(T));
-		memcpy(&ObjectA, &ObjectB, sizeof(T));
-		memcpy(&ObjectB, Buffer, sizeof(T));
+		memcpy((void *)&ObjectA, &ObjectB, sizeof(T));
+		memcpy((void *)&ObjectB, Buffer, sizeof(T));
 	}
 
 	namespace

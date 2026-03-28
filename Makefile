@@ -38,13 +38,12 @@ submodules:
 # Configure circle-stdlib
 #
 $(CIRCLE_STDLIB_CONFIG) $(CIRCLE_CONFIG)&:
+	#patch config for mingw
+	@${APPLY_PATCH} $(CIRCLESTDLIBHOME) patches/circle-std-config-mingw.patch
+	
 	@echo "Configuring for Raspberry Pi $(RASPBERRYPI) ($(BITS) bit)"
 	$(CIRCLESTDLIBHOME)/configure --raspberrypi=$(RASPBERRYPI) --prefix=$(PREFIX)
 
-# Apply patches
-	@${APPLY_PATCH} $(CIRCLEHOME) patches/circle-45-minimal-usb-drivers.patch
-	@${APPLY_PATCH} $(CIRCLEHOME) patches/circle-45-cp210x-remove-partnum-check.patch
-	@${APPLY_PATCH} $(CIRCLEHOME) patches/circle-45-gzip-kernel.patch
 
 ifeq ($(strip $(GC_SECTIONS)),1)
 # Enable function/data sections for circle-stdlib
@@ -62,6 +61,16 @@ endif
 
 # Enable PWM audio output on GPIO 12/13 for the Pi Zero 2 W
 	@echo "DEFINE += -DUSE_PWM_AUDIO_ON_ZERO" >> $(CIRCLE_CONFIG)
+
+# Disable unnecessary devices
+	@echo "DEFINE += -DEXCLUDE_USB_STORAGE" >> $(CIRCLE_CONFIG)
+	@echo "DEFINE += -DEXCLUDE_USB_KEYB" >> $(CIRCLE_CONFIG)
+	@echo "DEFINE += -DEXCLUDE_USB_MOUSE" >> $(CIRCLE_CONFIG)
+	@echo "DEFINE += -DEXCLUDE_USB_GAMEPAD" >> $(CIRCLE_CONFIG)
+	@echo "DEFINE += -DEXCLUDE_USB_PRINTER" >> $(CIRCLE_CONFIG)
+	@echo "DEFINE += -DEXCLUDE_USB_NET" >> $(CIRCLE_CONFIG)
+	@echo "DEFINE += -DEXCLUDE_USB_BLUETOOTH" >> $(CIRCLE_CONFIG)
+	@echo "DEFINE += -DEXCLUDE_USB_TOUCHSCREEN" >> $(CIRCLE_CONFIG)
 
 #
 # Build circle-stdlib
@@ -97,7 +106,7 @@ $(MT32EMUBUILDDIR)/.done: $(CIRCLESTDLIBHOME)/.done
 fluidsynth: $(FLUIDSYNTHBUILDDIR)/.done
 
 $(FLUIDSYNTHBUILDDIR)/.done: $(CIRCLESTDLIBHOME)/.done
-	@${APPLY_PATCH} $(FLUIDSYNTHHOME) patches/fluidsynth-2.3.1-circle.patch
+	@${APPLY_PATCH} $(FLUIDSYNTHHOME) patches/fluidsynth-2.4.7-circle.patch
 
 	@CFLAGS="$(CFLAGS_EXTERNAL)" \
 	cmake -B $(FLUIDSYNTHBUILDDIR) \
@@ -149,10 +158,8 @@ clean:
 #
 mrproper: clean
 # Reverse patches
-	@${REVERSE_PATCH} $(CIRCLEHOME) patches/circle-45-gzip-kernel.patch
-	@${REVERSE_PATCH} $(CIRCLEHOME) patches/circle-45-cp210x-remove-partnum-check.patch
-	@${REVERSE_PATCH} $(CIRCLEHOME) patches/circle-45-minimal-usb-drivers.patch
-	@${REVERSE_PATCH} $(FLUIDSYNTHHOME) patches/fluidsynth-2.3.1-circle.patch
+	@${REVERSE_PATCH} $(CIRCLESTDLIBHOME) patches/circle-std-config-mingw.patch
+	@${REVERSE_PATCH} $(FLUIDSYNTHHOME) patches/fluidsynth-2.4.7-circle.patch
 
 # Clean circle-stdlib
 	@if [ -f $(CIRCLE_STDLIB_CONFIG) ]; then $(MAKE) -C $(CIRCLESTDLIBHOME) mrproper; fi
