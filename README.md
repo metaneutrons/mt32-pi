@@ -94,13 +94,6 @@ Otherwise, for a manual installation:
 
 More detailed documentation for mt32-pi can now be found over at the [mt32-pi wiki]. Please read the wiki pages to learn about all of mt32-pi's features and supported hardware, and consider helping us improve it!
 
-## ❓ Help
-
-Take a look at our [FAQ] page for answers to the most common questions about mt32-pi.
-
-If you need some help with mt32-pi and the wiki doesn't answer your questions, head over to the [discussions] area and feel free to start a topic.
-
-> ⚠ **Note**: Please don't use the Issues area to ask for help - Issues are intended for reproducible bug reports and feature requests. Thank you!
 
 ## ❤️ Contributing
 
@@ -123,9 +116,6 @@ The [mt32-pi logo] was designed by and is © Dale Whinham. The terms of use for 
 
 ## 🙌 Acknowledgments
 
-- Many thanks go out to @rc55 and @nswaldman for their encouragement and testing! ❤️
-- A huge thank you to everyone who has donated via Ko-fi, PayPal, or Amazon - your support means a lot! ❤️
-- Special thanks to [Edu Arana (Arananet)], [Porkchop Express (MiSTerAddons)], @djhardrich, [Nat (MiSTerFPGA.co.uk)], [Ricardo Saraiva (UltimateMiSTer.com)], [Serge Defever (Serdashop)], and @opjose who have all generously donated hardware to the project.
 - The [Munt] team for their incredible work reverse-engineering the Roland MT-32 and producing an excellent emulation and well-structured project.
 - The [FluidSynth] team for their excellent and easily-portable SoundFont synthesizer project.
 - [S. Christian Collins][GeneralUser GS] for the excellent GeneralUser GS SoundFont and for kindly giving permission to include it in the project.
@@ -134,15 +124,13 @@ The [mt32-pi logo] was designed by and is © Dale Whinham. The terms of use for 
 - [Scondo] for dependency updates and bug fixes.
 - [stb_vorbis] by Sean Barrett for the public-domain Ogg Vorbis decoder enabling SF3 support.
 
-[Changelog]: https://github.com/dwhinham/mt32-pi/blob/master/CHANGELOG.md
+[Changelog]: https://github.com/metaneutrons/mt32-pi/blob/main/CHANGELOG.md
 [circle-stdlib]: https://github.com/smuehlst/circle-stdlib
 [Circle]: https://github.com/rsta2/circle
 [Configuration file]: https://github.com/dwhinham/mt32-pi/wiki/Configuration-file
 [Control surface]: https://github.com/dwhinham/mt32-pi/wiki/Control-surface
-[Discussions]: https://github.com/dwhinham/mt32-pi/discussions
-[Edu Arana (Arananet)]: https://www.arananet.net/pedidos
 [FAQ]: https://github.com/dwhinham/mt32-pi/wiki/FAQ
-[FluidSynth]: http://www.fluidsynth.org
+[FluidSynth]: https://www.fluidsynth.org
 [FTP server]: https://github.com/dwhinham/mt32-pi/wiki/Embedded-FTP-server
 [General MIDI]: https://en.wikipedia.org/wiki/General_MIDI
 [GeneralUser GS]: http://schristiancollins.com/generaluser.php
@@ -150,24 +138,20 @@ The [mt32-pi logo] was designed by and is © Dale Whinham. The terms of use for 
 [I²S Hi-Fi DACs]: https://github.com/dwhinham/mt32-pi/wiki/I%C2%B2S-DACs
 [inih]: https://github.com/benhoyt/inih
 [LCD and OLED displays]: https://github.com/dwhinham/mt32-pi/wiki/LCD-and-OLED-displays
-[License]: https://github.com/dwhinham/mt32-pi/blob/master/LICENSE
+[License]: https://github.com/metaneutrons/mt32-pi/blob/main/LICENSE
 [MiSTer FPGA]: https://github.com/dwhinham/mt32-pi/wiki/MiSTer-FPGA
 [MiSTer setup]: https://github.com/dwhinham/mt32-pi/wiki/MiSTer-FPGA%3A-Setup-and-usage
 [MT-32 synthesis]: https://github.com/dwhinham/mt32-pi/wiki/MT-32-synthesis
-[mt32-pi logo]: https://github.com/dwhinham/mt32-pi/blob/master/images/mt32pi_logo.svg
+[mt32-pi logo]: https://github.com/metaneutrons/mt32-pi/blob/main/images/mt32pi_logo.svg
 [mt32-pi wiki]: https://github.com/dwhinham/mt32-pi/wiki
 [Munt]: https://github.com/munt/munt
-[Nat (MiSTerFPGA.co.uk)]: https://misterfpga.co.uk
-[Porkchop Express (MiSTerAddons)]: https://misteraddons.com
-[Releases]: https://github.com/dwhinham/mt32-pi/releases
-[Ricardo Saraiva (UltimateMiSTer.com)]: https://ultimatemister.com
+[Releases]: https://github.com/metaneutrons/mt32-pi/releases
 [Roland GS]: https://en.wikipedia.org/wiki/Roland_GS
 [Roland MT-32]: https://en.wikipedia.org/wiki/Roland_MT-32
 [RTP-MIDI]: https://github.com/dwhinham/mt32-pi/wiki/Networking%3A-RTP-MIDI-%28AppleMIDI%29
 [Raw UDP socket]: https://github.com/dwhinham/mt32-pi/wiki/Networking%3A-UDP-MIDI
 [Scondo]: https://github.com/Scondo/mt32-pi
 [SD card preparation]: https://github.com/dwhinham/mt32-pi/wiki/SD-card-preparation
-[Serge Defever (Serdashop)]: http://serdashop.com
 [Serial port]: https://github.com/dwhinham/mt32-pi/wiki/MIDI-via-RS-232-or-USB-to-serial
 [SoundFont synthesis]: https://github.com/dwhinham/mt32-pi/wiki/SoundFont-synthesis
 [SoundFont]: https://en.wikipedia.org/wiki/SoundFont
