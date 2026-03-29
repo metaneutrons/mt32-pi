@@ -3,7 +3,7 @@ name: mt32-pi CI
 on: [push, pull_request]
 
 env:
-  toolchain-version: 14.2.rel1
+  toolchain-version: 14.3.rel1
   python-version: "3.12"
 
 jobs:

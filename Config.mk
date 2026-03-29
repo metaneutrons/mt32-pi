@@ -15,7 +15,7 @@ USERBAUD?=115200
 GC_SECTIONS?=1
 
 # Compress the kernel
-GZIP_KERNEL?=1
+GZIP_KERNEL?=0
 
 # Toolchain setup
 ifeq ($(BOARD), pi2)
