@@ -29,7 +29,9 @@ constexpr u16 PollRateMicros = 1000;
 
 CControl::CControl(TEventQueue& pEventQueue)
 	: m_pEventQueue(&pEventQueue),
+#if RASPPI != 5
 	  m_Timer(CInterruptSystem::Get(), InterruptHandler, this),
+#endif
 
 	  m_ButtonStateHistory{0},
 	  m_nButtonStateHistoryIndex(0),
@@ -43,10 +45,12 @@ CControl::CControl(TEventQueue& pEventQueue)
 
 bool CControl::Initialize()
 {
+#if RASPPI != 5
 	if (!m_Timer.Initialize())
 		return false;
 
 	m_Timer.Start(PollRateMicros);
+#endif
 
 	return true;
 }
@@ -121,6 +125,7 @@ void CControl::DebounceButtonState(u8 nState, u8 nMask)
 	m_nButtonState = (~nDebouncedButtonState) & nMask;
 }
 
+#if RASPPI != 5
 void CControl::InterruptHandler(CUserTimer* pUserTimer, void* pParam)
 {
 	CControl* const pThis = static_cast<CControl*>(pParam);
@@ -129,3 +134,4 @@ void CControl::InterruptHandler(CUserTimer* pUserTimer, void* pParam)
 	pUserTimer->Start(PollRateMicros);
 	pThis->ReadGPIOPins();
 }
+#endif

@@ -38,7 +38,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        board: [pi3-64, pi4-64]
+        board: [pi3-64, pi4-64, pi5]
     steps:
       - uses: actions/checkout@v4
 
