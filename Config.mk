@@ -18,7 +18,7 @@ GC_SECTIONS?=1
 GZIP_KERNEL?=0
 
 # Toolchain setup
-else ifeq ($(BOARD), pi3-64)
+ifeq ($(BOARD), pi3-64)
 RASPBERRYPI=3
 BITS=64
 CPU_FLAGS=-mcpu=cortex-a53 -mlittle-endian
