@@ -104,8 +104,9 @@ jobs:
           cp ${{ env.wlan-home }}/firmware/*.bin \
              ${{ env.wlan-home }}/firmware/*.txt \
              ${{ env.wlan-home }}/firmware/*.clm_blob \
-             ${{ env.wlan-home }}/firmware/LICENCE* \
              sdcard/firmware/
+        wget -q -O sdcard/firmware/LICENCE.broadcom_bcm43xx \
+             https://raw.githubusercontent.com/RPi-Distro/firmware-nonfree/master/debian/config/brcm80211/LICENSE
 
       - name: Download GeneralUser GS SoundFont
         run: |
