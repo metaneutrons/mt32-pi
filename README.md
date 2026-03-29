@@ -1,4 +1,4 @@
-[![mt32-pi CI](https://github.com/metaneutrons/mt32-pi/actions/workflows/ci.yml/badge.svg)](https://github.com/metaneutrons/mt32-pi/actions/workflows/ci.yml)
+[![CI](https://github.com/metaneutrons/mt32-pi/actions/workflows/ci.yml/badge.svg)](https://github.com/metaneutrons/mt32-pi/actions/workflows/ci.yml) [![Release](https://img.shields.io/github/v/release/metaneutrons/mt32-pi)](https://github.com/metaneutrons/mt32-pi/releases/latest) [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
 <h1 align="center">
     <img width="90%" title="mt32-pi - Baremetal synthesizer system" src="images/mt32pi_logo.svg">
