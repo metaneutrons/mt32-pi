@@ -1,18 +1,4 @@
-## Please note
-
-**It's unlikely that there will be any further releases of mt32-pi.**
-
-I have endured a sustained campaign of abuse from members of the VOGONS forum, been labelled a "clout-chaser", had threats sent to my personal email address, code been used in other projects without proper accreditation, my 3D print designs stolen and sold by faceless eBay/Etsy sellers, personal attacks made towards me when people don't get their feature request... the list goes on and on.
-
-*There is only so much I can take.*
-
-My mental health has been in decline as a direct result of this behavior; the joy of working on this project has pretty much gone. There is nothing to be gained from putting time and hard work into it any more. There is no gratitude, no encouragement - just entitled behavior and grift.
-
-To those who supported this project in the past, especially whilst I was a struggling student who needed all the uplift I could get, thank you sincerely.
-
----
-
-[![mt32-pi CI](https://github.com/dwhinham/mt32-pi/workflows/mt32-pi%20CI/badge.svg)](https://github.com/dwhinham/mt32-pi/actions?query=workflow:"mt32-pi+CI")
+[![mt32-pi CI](https://github.com/metaneutrons/mt32-pi/workflows/mt32-pi%20CI/badge.svg)](https://github.com/metaneutrons/mt32-pi/actions?query=workflow:"mt32-pi+CI")
 
 <h1 align="center">
     <img width="90%" title="mt32-pi - Baremetal synthesizer system" src="images/mt32pi_logo.svg">
@@ -28,11 +14,42 @@ To those who supported this project in the past, especially whilst I was a strug
 
 ---
 
+## About this fork
+
+This is a community-maintained fork of [dwhinham/mt32-pi](https://github.com/dwhinham/mt32-pi), continuing development after the original project was discontinued. All credit for the original work goes to Dale Whinham.
+
+### Changes from upstream (v0.12.1)
+
+**Updated dependencies:**
+- Circle Step 45.1 → **50.1** (circle-stdlib v19.1)
+- FluidSynth 2.3.1 → **2.5.3** (using built-in `osal=embedded`, 18-line patch vs 2200)
+- Munt/mt32emu → **2.7.3**
+- inih → **r62**
+- Newlib 3.1.0 → **4.5.0**
+- wpa_supplicant → **v2.11**
+- FatFs → **R0.16**
+- Toolchain: GCC 11.3 → **14.3.Rel1**
+
+**New features:**
+- **SF3 SoundFont support** — Ogg Vorbis compressed SoundFonts via stb_vorbis (5-10x smaller files)
+- **MIDI Thru** — forward MIDI from all physical inputs to UART TX for device chaining
+- **NEON SIMD** — vectorized float→int audio conversion in I2S path (AArch64)
+- **Raspberry Pi 5 support** (experimental, untested)
+
+**Bug fixes:**
+- Fixed operator precedence bug in AudioTask buffer sizing
+- Fixed strncpy null-termination safety in config parser and FTP server
+- Fixed LCD error logging during init
+- Fixed UI task race condition
+- Added missing WLAN firmware files (brcmfmac43430 clm_blob)
+
+---
+
 ## ✔️ Project status
 
 <img title="mt32-pi running on the Raspberry Pi 3 A+ with the Arananet PI-MIDI HAT." width="280rem" align="right" src="images/mt32pi_pimidi.png">
 
-- Supports Raspberry Pi Zero 2 W, Raspberry Pi 3 Model A+, B, and B+, Raspberry Pi 4 Model B, and CM4 series.
+- Supports Raspberry Pi Zero 2 W, Raspberry Pi 3 Model A+, B, and B+, Raspberry Pi 4 Model B, CM4 series, and Raspberry Pi 5 (experimental).
   * Pi 2 works, but only with concessions on playback quality.
   * Pi Zero (original) and Pi 1 are unfortunately too slow (even with an overclock) and unsupported.
 - PWM headphone jack audio.
@@ -47,8 +64,8 @@ To those who supported this project in the past, especially whilst I was a strug
 - [MiSTer FPGA integration via user port][MiSTer FPGA].
 - Network MIDI support via [RTP-MIDI] and [raw UDP socket].
 - [Embedded FTP server][FTP server] for remote access to files.
-- A user interface with menu system is _planned_.
-- More advanced MIDI routing is _planned_.
+- SF3 SoundFont support (Ogg Vorbis compressed).
+- Universal MIDI Thru (forward all physical MIDI inputs to UART TX).
 
 ## ✨ Quick-start guide
 
@@ -65,6 +82,7 @@ Otherwise, for a manual installation:
     * For information on using multiple ROM sets and switching between them, see the [MT-32 synthesis] wiki page.
     * The file names or extensions don't matter; mt32-pi will scan and detect their types automatically.
 4. Optionally add your favorite SoundFonts to the `soundfonts` directory.
+    * Both SF2 and SF3 (Ogg Vorbis compressed) formats are supported.
     * For information on using multiple SoundFonts and switching between them, see the [SoundFont synthesis] wiki page.
     * Again, file names/extensions don't matter.
 5. Edit the `mt32-pi.cfg` file to enable any optional hardware (Hi-Fi DAC, displays, buttons). Refer to [the wiki][mt32-pi wiki] to find supported hardware.
@@ -86,9 +104,7 @@ If you need some help with mt32-pi and the wiki doesn't answer your questions, h
 
 ## ❤️ Contributing
 
-This project is generally quite stable and very usable, but still considered by its author to be in early stages of development.
-
-Hence, please **DO NOT** work on large features and open pull requests without prior discussion. There is a strong possibility that work-in-progress code for proposed features already exists, but may not yet be public, and your work will have to be rejected.
+Contributions are welcome! Please open an issue or discussion before working on large features.
 
 Trivial changes to the code that fix issues are always welcome, as are improvements to documentation, and hardware/software compatibility reports.
 
@@ -115,6 +131,8 @@ The [mt32-pi logo] was designed by and is © Dale Whinham. The terms of use for 
 - [S. Christian Collins][GeneralUser GS] for the excellent GeneralUser GS SoundFont and for kindly giving permission to include it in the project.
 - The [Circle] and [circle-stdlib] projects for providing the best C++ baremetal framework for the Raspberry Pi.
 - The [inih] project for a nice, lightweight config file parser.
+- [Scondo] for dependency updates and bug fixes.
+- [stb_vorbis] by Sean Barrett for the public-domain Ogg Vorbis decoder enabling SF3 support.
 
 [Changelog]: https://github.com/dwhinham/mt32-pi/blob/master/CHANGELOG.md
 [circle-stdlib]: https://github.com/smuehlst/circle-stdlib
@@ -147,11 +165,13 @@ The [mt32-pi logo] was designed by and is © Dale Whinham. The terms of use for 
 [Roland MT-32]: https://en.wikipedia.org/wiki/Roland_MT-32
 [RTP-MIDI]: https://github.com/dwhinham/mt32-pi/wiki/Networking%3A-RTP-MIDI-%28AppleMIDI%29
 [Raw UDP socket]: https://github.com/dwhinham/mt32-pi/wiki/Networking%3A-UDP-MIDI
+[Scondo]: https://github.com/Scondo/mt32-pi
 [SD card preparation]: https://github.com/dwhinham/mt32-pi/wiki/SD-card-preparation
 [Serge Defever (Serdashop)]: http://serdashop.com
 [Serial port]: https://github.com/dwhinham/mt32-pi/wiki/MIDI-via-RS-232-or-USB-to-serial
 [SoundFont synthesis]: https://github.com/dwhinham/mt32-pi/wiki/SoundFont-synthesis
 [SoundFont]: https://en.wikipedia.org/wiki/SoundFont
+[stb_vorbis]: https://github.com/nothings/stb
 [Updating mt32-pi]: https://github.com/dwhinham/mt32-pi/wiki/Updating-mt32-pi
 [USB MIDI interfaces]: https://github.com/dwhinham/mt32-pi/wiki/USB-MIDI-interfaces
 [Yamaha XG]: https://en.wikipedia.org/wiki/Yamaha_XG
