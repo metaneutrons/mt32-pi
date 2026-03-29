@@ -1,13 +1,8 @@
-# Remove delay and use cutdown start_cd.elf/start4cd.elf for slightly quicker boot
+# mt32-pi boot configuration
 boot_delay=0
 disable_splash=1
-force_eeprom_read=0
 gpu_mem=16
 disable_overscan=1
-
-# Ensure stable I2C baud rate by locking the core clock
-core_freq=250
-core_freq_min=250
 
 # Uncomment the following line if your HDMI audio extractor isn't outputting any sound.
 # This forces HDMI signalling in case your device is detected as a DVI device.
@@ -20,6 +15,9 @@ core_freq_min=250
 [pi02]
 arm_64bit=1
 kernel=kernel8.img
+# Ensure stable I2C baud rate by locking the core clock
+core_freq=250
+core_freq_min=250
 
 # Uncomment the following to overclock the Pi Zero 2 W to match the performance of the Pi 3B
 #arm_freq=1200
@@ -28,15 +26,13 @@ kernel=kernel8.img
 [pi3]
 arm_64bit=1
 kernel=kernel8.img
+core_freq=250
+core_freq_min=250
 
 [pi4]
 arm_64bit=1
 armstub=armstub8-rpi4.bin
 kernel=kernel8-rpi4.img
 
-# Optimized frequency settings for lower energy use/temperature on Pi 4
-arm_freq=600
-arm_freq_min=100
-gpu_freq=100
-over_voltage=-16
-over_voltage_min=-16
+[cm4]
+otg_mode=1
