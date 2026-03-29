@@ -51,7 +51,6 @@ This is a community-maintained fork of [dwhinham/mt32-pi](https://github.com/dwh
 
 - Supports Raspberry Pi Zero 2 W, Raspberry Pi 3 Model A+, B, and B+, Raspberry Pi 4 Model B, CM4 series, and Raspberry Pi 5 (experimental).
   * Pi 2 and below are unsupported (too slow).
-  * Pi Zero (original) and Pi 1 are unfortunately too slow (even with an overclock) and unsupported.
 - PWM headphone jack audio.
   * Quality is known to be poor (aliasing/distortion on quieter sounds).
   * It is not currently known whether this can be improved or not.
