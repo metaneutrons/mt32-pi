@@ -1,4 +1,4 @@
-[![mt32-pi CI](https://github.com/metaneutrons/mt32-pi/workflows/mt32-pi%20CI/badge.svg)](https://github.com/metaneutrons/mt32-pi/actions?query=workflow:"mt32-pi+CI")
+[![mt32-pi CI](https://github.com/metaneutrons/mt32-pi/actions/workflows/ci.yml/badge.svg)](https://github.com/metaneutrons/mt32-pi/actions/workflows/ci.yml)
 
 <h1 align="center">
     <img width="90%" title="mt32-pi - Baremetal synthesizer system" src="images/mt32pi_logo.svg">
