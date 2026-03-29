@@ -36,3 +36,6 @@ kernel=kernel8-rpi4.img
 
 [cm4]
 otg_mode=1
+
+[pi5]
+kernel=kernel_2712.img

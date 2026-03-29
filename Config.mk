@@ -2,7 +2,7 @@
 # Build configuration
 #
 
-# Valid options: pi3, pi3-64, pi4, pi4-64
+# Valid options: pi3, pi3-64, pi4, pi4-64, pi5 (experimental)
 BOARD?=pi3-64
 HDMI_CONSOLE?=0
 
@@ -48,8 +48,15 @@ BITS=64
 CPU_FLAGS=-mcpu=cortex-a72 -mlittle-endian
 PREFIX=aarch64-none-elf-
 KERNEL=kernel8-rpi4
+else ifeq ($(BOARD), pi5)
+# EXPERIMENTAL: Raspberry Pi 5 support (untested)
+RASPBERRYPI=5
+BITS=64
+CPU_FLAGS=-mcpu=cortex-a76 -mlittle-endian
+PREFIX=aarch64-none-elf-
+KERNEL=kernel_2712
 else
-$(error Invalid board type "$(BOARD)"; please specify one of [ pi2 | pi3 | pi3-64 | pi4 | pi4-64 ])
+$(error Invalid board type "$(BOARD)"; please specify one of [ pi2 | pi3 | pi3-64 | pi4 | pi4-64 | pi5 ])
 endif
 
 # Compiler flags for external dependencies
