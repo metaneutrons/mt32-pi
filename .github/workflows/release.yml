@@ -104,7 +104,7 @@ jobs:
           cp ${{ env.wlan-home }}/firmware/*.bin \
              ${{ env.wlan-home }}/firmware/*.txt \
              ${{ env.wlan-home }}/firmware/*.clm_blob \
-             ${{ env.wlan-home }}/firmware/LICENCE.* \
+             ${{ env.wlan-home }}/firmware/LICENCE* \
              sdcard/firmware/
 
       - name: Download GeneralUser GS SoundFont
