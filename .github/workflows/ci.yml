@@ -1,10 +1,9 @@
-name: mt32-pi CI
+name: CI
 
 on: [push, pull_request]
 
 env:
   toolchain-version: 14.3.rel1
-  python-version: "3.12"
 
 jobs:
   lint:
@@ -14,7 +13,7 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: ${{ env.python-version }}
+          python-version: "3.12"
 
       - uses: psf/black@stable
         with:
@@ -23,7 +22,7 @@ jobs:
 
       - uses: isort/isort-action@master
         with:
-            sortPaths: scripts
+          sortPaths: scripts
 
       - uses: py-actions/flake8@v2
         with:
@@ -41,199 +40,44 @@ jobs:
       matrix:
         board: [pi2, pi3-64, pi4-64, pi5]
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Fetch submodules
-      run: make submodules
+      - name: Fetch submodules
+        run: make submodules
 
-    - name: Setup ccache
-      uses: hendrikmuhs/ccache-action@v1
-      with:
-        key: ${{ env.toolchain-version }}-${{ matrix.board }}
+      - uses: hendrikmuhs/ccache-action@v1
+        with:
+          key: ${{ env.toolchain-version }}-${{ matrix.board }}
 
-    - name: Cache ARM toolchains
-      id: cache-toolchains
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/arm-gnu-toolchain-${{ env.toolchain-version }}-x86_64-arm-none-eabi
-          ~/arm-gnu-toolchain-${{ env.toolchain-version }}-x86_64-aarch64-none-elf
-        key: cache-arm-toolchains-${{ env.toolchain-version }}
+      - name: Cache ARM toolchains
+        id: cache-toolchains
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/arm-gnu-toolchain-${{ env.toolchain-version }}-x86_64-arm-none-eabi
+            ~/arm-gnu-toolchain-${{ env.toolchain-version }}-x86_64-aarch64-none-elf
+          key: cache-arm-toolchains-${{ env.toolchain-version }}
 
-    - name: Install toolchains if not retrieved from cache
-      if: steps.cache-toolchains.outputs.cache-hit != 'true'
-      run: |
-        for triplet in arm-none-eabi aarch64-none-elf; do
-          wget -q https://developer.arm.com/-/media/Files/downloads/gnu/${{ env.toolchain-version }}/binrel/arm-gnu-toolchain-${{ env.toolchain-version }}-x86_64-${triplet}.tar.xz
-          tar -xf arm-gnu-toolchain-${{ env.toolchain-version }}-x86_64-${triplet}.tar.xz -C ~
-          rm arm-gnu-toolchain-${{ env.toolchain-version }}-x86_64-${triplet}.tar.xz
-        done
+      - name: Install toolchains
+        if: steps.cache-toolchains.outputs.cache-hit != 'true'
+        run: |
+          for triplet in arm-none-eabi aarch64-none-elf; do
+            wget -q https://developer.arm.com/-/media/Files/downloads/gnu/${{ env.toolchain-version }}/binrel/arm-gnu-toolchain-${{ env.toolchain-version }}-x86_64-${triplet}.tar.xz
+            tar -xf arm-gnu-toolchain-${{ env.toolchain-version }}-x86_64-${triplet}.tar.xz -C ~
+            rm arm-gnu-toolchain-${{ env.toolchain-version }}-x86_64-${triplet}.tar.xz
+          done
 
-    - name: Update PATH
-      run: |
-        mkdir ~/ccache_bin
-        for triplet in arm-none-eabi aarch64-none-elf; do
-          ln -s $(which ccache) ~/ccache_bin/${triplet}-gcc
-          ln -s $(which ccache) ~/ccache_bin/${triplet}-g++
-          echo "$HOME/ccache_bin:$HOME/arm-gnu-toolchain-${{ env.toolchain-version }}-x86_64-${triplet}/bin" >> $GITHUB_PATH
-        done
+      - name: Update PATH
+        run: |
+          mkdir ~/ccache_bin
+          for triplet in arm-none-eabi aarch64-none-elf; do
+            ln -s $(which ccache) ~/ccache_bin/${triplet}-gcc
+            ln -s $(which ccache) ~/ccache_bin/${triplet}-g++
+            echo "$HOME/ccache_bin:$HOME/arm-gnu-toolchain-${{ env.toolchain-version }}-x86_64-${triplet}/bin" >> $GITHUB_PATH
+          done
 
-    - name: Build
-      run: make -j BOARD=${{ matrix.board }}
+      - name: Build
+        run: make -j BOARD=${{ matrix.board }}
 
-    - name: Upload built kernel
-      uses: actions/upload-artifact@v4
-      with:
-        name: kernels-${{ matrix.board }}
-        path: kernel*.img
-
-    - name: Build (HDMI console)
-      run: make clean && make -j BOARD=${{ matrix.board }} HDMI_CONSOLE=1
-
-    - name: Upload built kernel (HDMI)
-      uses: actions/upload-artifact@v4
-      with:
-        name: kernels-hdmi-${{ matrix.board }}
-        path: kernel*.img
-
-  package:
-    needs: build
-    runs-on: ubuntu-latest
-    env:
-      boot-home: external/circle-stdlib/libs/circle/boot
-      wlan-home: external/circle-stdlib/libs/circle/addon/wlan
-
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Fetch submodules
-      run: make submodules
-
-    - name: Cache boot files
-      id: cache-boot-files
-      uses: actions/cache@v4
-      with:
-        path: |
-          sdcard/armstub8-rpi4.bin
-          sdcard/bcm2711-rpi-4-b.dtb
-          sdcard/bcm2711-rpi-400.dtb
-          sdcard/bcm2711-rpi-cm4.dtb
-          sdcard/bootcode.bin
-          sdcard/COPYING.linux
-          sdcard/fixup_cd.dat
-          sdcard/fixup4cd.dat
-          sdcard/LICENCE.broadcom
-          sdcard/start_cd.elf
-          sdcard/start4cd.elf
-        key: cache-boot-files-${{ hashFiles(join(env.boot-home, '/Makefile')) }}
-
-    - name: Cache WLAN firmware
-      id: cache-wlan-firmware
-      uses: actions/cache@v4
-      with:
-        path: sdcard/firmware
-        key: cache-wlan-firmware-${{ hashFiles(join(env.wlan-home, '/firmware/Makefile')) }}
-
-    - name: Cache ARM toolchains
-      if: steps.cache-boot-files.outputs.cache-hit != 'true'
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/arm-gnu-toolchain-${{ env.toolchain-version }}-x86_64-arm-none-eabi
-          ~/arm-gnu-toolchain-${{ env.toolchain-version }}-x86_64-aarch64-none-elf
-        key: cache-arm-toolchains-${{ env.toolchain-version }}
-
-    - name: Update PATH
-      if: steps.cache-boot-files.outputs.cache-hit != 'true'
-      run: |
-        for triplet in arm-none-eabi aarch64-none-elf; do
-          echo "$HOME/arm-gnu-toolchain-${{ env.toolchain-version }}-x86_64-${triplet}/bin" >> $GITHUB_PATH
-        done
-
-    - name: Download boot files and build ARM stub if not retrieved from cache
-      if: steps.cache-boot-files.outputs.cache-hit != 'true'
-      run: |
-        make -C ${{ env.boot-home }} firmware armstub64
-        cp  ${{ env.boot-home }}/armstub8-rpi4.bin \
-            ${{ env.boot-home }}/bcm2711-rpi-4-b.dtb \
-            ${{ env.boot-home }}/bcm2711-rpi-400.dtb \
-            ${{ env.boot-home }}/bcm2711-rpi-cm4.dtb \
-            ${{ env.boot-home }}/bootcode.bin \
-            ${{ env.boot-home }}/COPYING.linux \
-            ${{ env.boot-home }}/fixup_cd.dat \
-            ${{ env.boot-home }}/fixup4cd.dat \
-            ${{ env.boot-home }}/LICENCE.broadcom \
-            ${{ env.boot-home }}/start_cd.elf \
-            ${{ env.boot-home }}/start4cd.elf \
-            sdcard
-
-    - name: Download WLAN firmware if not retrieved from cache
-      if: steps.cache-wlan-firmware.outputs.cache-hit != 'true'
-      run: |
-        mkdir -p sdcard/firmware
-        make -C ${{ env.wlan-home }}/firmware
-        cp ${{ env.wlan-home }}/firmware/*.bin \
-           ${{ env.wlan-home }}/firmware/*.txt \
-           ${{ env.wlan-home }}/firmware/*.clm_blob \
-           ${{ env.wlan-home }}/firmware/LICENCE.* \
-           sdcard/firmware/
-
-    - name: Cache GeneralUser GS SoundFont
-      id: cache-generaluser-gs
-      uses: actions/cache@v4
-      with:
-        path: GeneralUser GS v1.511
-        key: cache-generaluser-gs-1.511
-
-    - name: Download GeneralUser GS SoundFont if not retrieved from cache
-      if: steps.cache-generaluser-gs.outputs.cache-hit != 'true'
-      run: |
-        pip install gdown
-        gdown -q https://drive.google.com/uc?id=1omYCHcGymYGZcKe0DgRP1SeB1wTkemtx
-        unzip "GeneralUser GS v1.511.zip"
-
-    - name: Retrieve built kernels
-      uses: actions/download-artifact@v4
-      with:
-        pattern: kernels-*
-        path: sdcard
-        merge-multiple: true
-
-    - name: Add extra files to SD card directory
-      run: |
-        mkdir sdcard/docs
-        cp "GeneralUser GS v1.511/GeneralUser GS v1.511.sf2" sdcard/soundfonts
-        cp "GeneralUser GS v1.511/CHANGELOG.md" sdcard/docs/CHANGELOG.GeneralUserGS
-        cp "GeneralUser GS v1.511/LICENSE.txt" sdcard/docs/LICENSE.GeneralUserGS
-        cp LICENSE sdcard/docs
-        cp README.md sdcard/docs
-
-    - name: Upload SD card archive
-      uses: actions/upload-artifact@v4
-      with:
-        name: sdcard
-        path: sdcard
-
-    - name: Get version (git tag)
-      if: startsWith(github.ref, 'refs/tags/')
-      id: get_version
-      run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-
-    - name: Create release package
-      if: startsWith(github.ref, 'refs/tags/')
-      run: cd sdcard; zip -r ../mt32-pi-${{ steps.get_version.outputs.version }}.zip *
-
-    - name: Release
-      uses: docker://antonyurchenko/git-release:latest
-      if: startsWith(github.ref, 'refs/tags/')
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        DRAFT_RELEASE: "false"
-        PRE_RELEASE: "false"
-        CHANGELOG_FILE: "CHANGELOG.md"
-        ALLOW_EMPTY_CHANGELOG: "false"
-      with:
-        args: |
-            mt32-pi-*.zip
-
-        .github/scripts/discord_notify.py ${{ secrets.FPGAMING_DISCORD_WEBHOOK }} ${{ steps.get_version.outputs.version }}
+      - name: Build (HDMI console)
+        run: make clean && make -j BOARD=${{ matrix.board }} HDMI_CONSOLE=1

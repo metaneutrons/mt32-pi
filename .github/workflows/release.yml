@@ -1,0 +1,146 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  toolchain-version: 14.3.rel1
+  boot-home: external/circle-stdlib/libs/circle/boot
+  wlan-home: external/circle-stdlib/libs/circle/addon/wlan
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    name: build-${{ matrix.board }}
+    strategy:
+      fail-fast: false
+      matrix:
+        board: [pi2, pi3-64, pi4-64, pi5]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch submodules
+        run: make submodules
+
+      - name: Cache ARM toolchains
+        id: cache-toolchains
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/arm-gnu-toolchain-${{ env.toolchain-version }}-x86_64-arm-none-eabi
+            ~/arm-gnu-toolchain-${{ env.toolchain-version }}-x86_64-aarch64-none-elf
+          key: cache-arm-toolchains-${{ env.toolchain-version }}
+
+      - name: Install toolchains
+        if: steps.cache-toolchains.outputs.cache-hit != 'true'
+        run: |
+          for triplet in arm-none-eabi aarch64-none-elf; do
+            wget -q https://developer.arm.com/-/media/Files/downloads/gnu/${{ env.toolchain-version }}/binrel/arm-gnu-toolchain-${{ env.toolchain-version }}-x86_64-${triplet}.tar.xz
+            tar -xf arm-gnu-toolchain-${{ env.toolchain-version }}-x86_64-${triplet}.tar.xz -C ~
+            rm arm-gnu-toolchain-${{ env.toolchain-version }}-x86_64-${triplet}.tar.xz
+          done
+
+      - name: Update PATH
+        run: |
+          for triplet in arm-none-eabi aarch64-none-elf; do
+            echo "$HOME/arm-gnu-toolchain-${{ env.toolchain-version }}-x86_64-${triplet}/bin" >> $GITHUB_PATH
+          done
+
+      - name: Build
+        run: make -j BOARD=${{ matrix.board }}
+
+      - name: Upload kernel
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-${{ matrix.board }}
+          path: kernel*.img
+
+  package:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch submodules
+        run: make submodules
+
+      - name: Cache ARM toolchains
+        id: cache-toolchains
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/arm-gnu-toolchain-${{ env.toolchain-version }}-x86_64-arm-none-eabi
+            ~/arm-gnu-toolchain-${{ env.toolchain-version }}-x86_64-aarch64-none-elf
+          key: cache-arm-toolchains-${{ env.toolchain-version }}
+
+      - name: Update PATH
+        run: |
+          for triplet in arm-none-eabi aarch64-none-elf; do
+            echo "$HOME/arm-gnu-toolchain-${{ env.toolchain-version }}-x86_64-${triplet}/bin" >> $GITHUB_PATH
+          done
+
+      - name: Download boot firmware
+        run: |
+          make -C ${{ env.boot-home }} firmware armstub64
+          cp ${{ env.boot-home }}/armstub8-rpi4.bin \
+             ${{ env.boot-home }}/bcm2711-rpi-4-b.dtb \
+             ${{ env.boot-home }}/bcm2711-rpi-400.dtb \
+             ${{ env.boot-home }}/bcm2711-rpi-cm4.dtb \
+             ${{ env.boot-home }}/bootcode.bin \
+             ${{ env.boot-home }}/COPYING.linux \
+             ${{ env.boot-home }}/fixup_cd.dat \
+             ${{ env.boot-home }}/fixup4cd.dat \
+             ${{ env.boot-home }}/LICENCE.broadcom \
+             ${{ env.boot-home }}/start_cd.elf \
+             ${{ env.boot-home }}/start4cd.elf \
+             sdcard
+
+      - name: Download WLAN firmware
+        run: |
+          mkdir -p sdcard/firmware
+          make -C ${{ env.wlan-home }}/firmware
+          cp ${{ env.wlan-home }}/firmware/*.bin \
+             ${{ env.wlan-home }}/firmware/*.txt \
+             ${{ env.wlan-home }}/firmware/*.clm_blob \
+             ${{ env.wlan-home }}/firmware/LICENCE.* \
+             sdcard/firmware/
+
+      - name: Download GeneralUser GS SoundFont
+        run: |
+          pip install gdown
+          gdown -q https://drive.google.com/uc?id=1omYCHcGymYGZcKe0DgRP1SeB1wTkemtx
+          unzip "GeneralUser GS v1.511.zip"
+          cp "GeneralUser GS v1.511/GeneralUser GS v1.511.sf2" sdcard/soundfonts/
+          mkdir -p sdcard/docs
+          cp "GeneralUser GS v1.511/CHANGELOG.md" sdcard/docs/CHANGELOG.GeneralUserGS
+          cp "GeneralUser GS v1.511/LICENSE.txt" sdcard/docs/LICENSE.GeneralUserGS
+          cp LICENSE sdcard/docs/
+          cp README.md sdcard/docs/
+
+      - name: Retrieve built kernels
+        uses: actions/download-artifact@v4
+        with:
+          pattern: kernel-*
+          path: sdcard
+          merge-multiple: true
+
+      - name: Get version
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Create release package
+        run: cd sdcard && zip -r ../mt32-pi-${{ steps.version.outputs.version }}.zip *
+
+      - name: Upload SD card archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: mt32-pi-${{ steps.version.outputs.version }}
+          path: mt32-pi-*.zip
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: mt32-pi-*.zip
+          generate_release_notes: true
