@@ -1,5 +1,5 @@
 blank_issues_enabled: false
 contact_links:
-  - name: ❓ Support and Discussion forum
-    url: https://github.com/dwhinham/mt32-pi/discussions
-    about: Please ask and answer questions here
+  - name: 📖 Documentation and FAQ (upstream wiki)
+    url: https://github.com/dwhinham/mt32-pi/wiki
+    about: Hardware setup, configuration and the FAQ. Written for the original project and not maintained here, but still accurate for most topics.
