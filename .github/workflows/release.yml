@@ -5,6 +5,9 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: read
+
 env:
   toolchain-version: 14.3.rel1
   boot-home: external/circle-stdlib/libs/circle/boot
@@ -19,14 +22,14 @@ jobs:
       matrix:
         board: [pi3-64, pi4-64, pi5]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Fetch submodules
         run: make submodules
 
       - name: Cache ARM toolchains
         id: cache-toolchains
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             ~/arm-gnu-toolchain-${{ env.toolchain-version }}-x86_64-arm-none-eabi
@@ -45,14 +48,14 @@ jobs:
       - name: Update PATH
         run: |
           for triplet in arm-none-eabi aarch64-none-elf; do
-            echo "$HOME/arm-gnu-toolchain-${{ env.toolchain-version }}-x86_64-${triplet}/bin" >> $GITHUB_PATH
+            echo "$HOME/arm-gnu-toolchain-${{ env.toolchain-version }}-x86_64-${triplet}/bin" >> "$GITHUB_PATH"
           done
 
       - name: Build
         run: make -j BOARD=${{ matrix.board }}
 
       - name: Upload kernel
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: kernel-${{ matrix.board }}
           path: kernel*.img
@@ -60,15 +63,18 @@ jobs:
   package:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      # Creating the GitHub release is the only write this workflow needs.
+      contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Fetch submodules
         run: make submodules
 
       - name: Cache ARM toolchains
         id: cache-toolchains
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             ~/arm-gnu-toolchain-${{ env.toolchain-version }}-x86_64-arm-none-eabi
@@ -78,7 +84,7 @@ jobs:
       - name: Update PATH
         run: |
           for triplet in arm-none-eabi aarch64-none-elf; do
-            echo "$HOME/arm-gnu-toolchain-${{ env.toolchain-version }}-x86_64-${triplet}/bin" >> $GITHUB_PATH
+            echo "$HOME/arm-gnu-toolchain-${{ env.toolchain-version }}-x86_64-${triplet}/bin" >> "$GITHUB_PATH"
           done
 
       - name: Download boot firmware
@@ -121,7 +127,7 @@ jobs:
           cp README.md sdcard/docs/
 
       - name: Retrieve built kernels
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: kernel-*
           path: sdcard
@@ -129,19 +135,19 @@ jobs:
 
       - name: Get version
         id: version
-        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
 
       - name: Create release package
-        run: cd sdcard && zip -r ../mt32-pi-${{ steps.version.outputs.version }}.zip *
+        run: cd sdcard && zip -r "../mt32-pi-${{ steps.version.outputs.version }}.zip" ./*
 
       - name: Upload SD card archive
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: mt32-pi-${{ steps.version.outputs.version }}
           path: mt32-pi-*.zip
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           files: mt32-pi-*.zip
           generate_release_notes: true
