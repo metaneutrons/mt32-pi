@@ -5,7 +5,7 @@
 include Config.mk
 
 .DEFAULT_GOAL=all
-.PHONY: submodules circle-stdlib mt32emu fluidsynth all clean veryclean
+.PHONY: setup submodules circle-stdlib mt32emu fluidsynth all clean veryclean
 
 #
 # Functions to apply/reverse patches only if not completely applied/reversed already
@@ -171,3 +171,15 @@ mrproper: clean
 
 # Clean FluidSynth
 	@$(RM) -r $(FLUIDSYNTHBUILDDIR)
+
+#
+# Install the git hooks. Needs lefthook on the PATH:
+#   brew install lefthook   (or: mise use -g lefthook)
+# Without it the hooks silently do not run; enforcement lives in CI either way.
+#
+setup:
+	@command -v lefthook >/dev/null 2>&1 || { \
+		echo "lefthook is missing. Install it with 'brew install lefthook'." >&2; \
+		exit 1; \
+	}
+	@lefthook install

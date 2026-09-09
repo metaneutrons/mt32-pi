@@ -45,6 +45,19 @@ jobs:
         with:
           scandir: scripts
 
+      # The lefthook repository has no install.sh. Binary from the release
+      # asset, version pinned like any other dependency.
+      - name: Check the hook configuration
+        env:
+          LEFTHOOK_VERSION: '2.1.12'
+        run: |
+          set -euo pipefail
+          curl -sSfL \
+            "https://github.com/evilmartians/lefthook/releases/download/v${LEFTHOOK_VERSION}/lefthook_${LEFTHOOK_VERSION}_Linux_x86_64.gz" \
+            | gzip -d > "$RUNNER_TEMP/lefthook"
+          chmod +x "$RUNNER_TEMP/lefthook"
+          "$RUNNER_TEMP/lefthook" validate
+
   build:
     runs-on: ubuntu-latest
     name: build-${{ matrix.board }}
