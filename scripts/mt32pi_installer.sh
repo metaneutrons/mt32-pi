@@ -37,8 +37,9 @@
 
 set -o pipefail
 
-SCRIPT_VERSION=0.2.0
-GITHUB_API_URL="https://api.github.com/repos/dwhinham/mt32-pi/releases/latest"
+SCRIPT_VERSION=0.3.0
+GITHUB_REPO="metaneutrons/mt32-pi"
+GITHUB_API_URL="https://api.github.com/repos/$GITHUB_REPO/releases/latest"
 MISTER_WPA_SUPPLICANT_CFG_PATH="/media/fat/linux/wpa_supplicant.conf"
 
 DIALOG=(dialog --no-collapse --colors --backtitle "mt32-pi Installer v$SCRIPT_VERSION")
@@ -377,7 +378,12 @@ function get_latest_version {
 
 	temp_dir="$1"
 	temp_file=$(mktemp) || return 1
-	release_url=$("${CURL[@]}" -s -L $GITHUB_API_URL | jq -r ".assets[0].browser_download_url") || return 1
+	# Select the SD card archive by name and require it to be unique. Picking
+	# .assets[0] decides by listing order and silently grabs a checksum file or
+	# a signature bundle as soon as the release carries more than one asset.
+	release_url=$("${CURL[@]}" -s -L "$GITHUB_API_URL" |
+		jq -r -e '[.assets[] | select(.name | test("^mt32-pi-[0-9].*\\.zip$")) | .browser_download_url] |
+		          if length == 1 then .[0] else error("expected exactly one SD card archive, found \(length)") end') || return 1
 
 	"${CURL[@]}" -L -o "$temp_file" "$release_url" 2>&1 | "${DIALOG[@]}" --progressbox "Downloading mt32-pi..." 30 83 || return 1
 	unzip "$temp_file" -d "$temp_dir" | "${DIALOG[@]}" --progressbox "Extracting mt32-pi..." 30 83 || return 1
@@ -621,10 +627,10 @@ MT-32 mode will be unavailable until you add MT-32 ROM files to the \Zb\Z4roms\Z
 
              Thankyou for using mt32-pi! \Z5<3\Zn
 
-           \Z1\Zuhttps://github.com/dwhinham/mt32-pi\Zn
-               \Z1\Zuhttps://ko-fi.com/d0pefish\Zn
+         \Z1\Zuhttps://github.com/metaneutrons/mt32-pi\Zn
 
-         Please support open source developers!
+    mt32-pi was created by Dale Whinham. Please support him:
+               \Z1\Zuhttps://ko-fi.com/d0pefish\Zn
 EOF
 
 "${DIALOG[@]}" --title "Installation complete!" --msgbox "$MSG_COMPLETE" 17 60
