@@ -1,0 +1,31 @@
+# Hook manager for this repository. Installation:
+#   brew install lefthook
+#   lefthook install
+# The scripts under scripts/hooks/ are manager-independent and also work under
+# core.hooksPath.
+#
+# Hooks are fast feedback, not enforcement: `git commit --no-verify` bypasses
+# them. Every check here has a counterpart in the CI job `commit-hygiene` or
+# `secrets`, which a pull request cannot bypass.
+
+commit-msg:
+  commands:
+    conventional-commits:
+      # {1} is the path to the commit message.
+      run: sh scripts/hooks/check-commit-message.sh {1}
+
+pre-commit:
+  parallel: true
+  commands:
+    staged-guards:
+      run: sh scripts/hooks/check-staged.sh
+    secrets:
+      run: gitleaks git --pre-commit --redact --staged --verbose
+
+# No build step here. A bare-metal build of Circle, FluidSynth and Munt is far
+# beyond the 30 second budget for a pre-push hook; the board matrix runs in CI.
+pre-push:
+  parallel: false
+  commands:
+    secrets:
+      run: sh scripts/hooks/check-push-secrets.sh
