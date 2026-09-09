@@ -1,9 +1,11 @@
 name: Release
 
+# NO tag trigger. release-please creates the tag and starts this pipeline with
+# `gh workflow run release.yml --ref "$TAG"`. A tag trigger here would run a
+# second pipeline in parallel on every tag creation, and it would also fire for
+# any of the 31 inherited upstream tags that a stray `git push --tags` pushes.
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -14,7 +16,65 @@ env:
   wlan-home: external/circle-stdlib/libs/circle/addon/wlan
 
 jobs:
+  identity:
+    name: Establish identity
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: The ref must be a release tag on this very commit
+        id: check
+        run: |
+          set -euo pipefail
+          tag="$GITHUB_REF_NAME"
+
+          if [ "$GITHUB_REF_TYPE" != tag ]; then
+            echo "::error::this pipeline runs on a release tag only, got $GITHUB_REF_TYPE $tag"
+            exit 1
+          fi
+
+          # Canonical SemVer with a leading v. A prerelease suffix is allowed;
+          # build metadata is not, because it would reach artefact file names.
+          if ! printf '%s' "$tag" | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error::tag $tag is not canonical SemVer with a leading v"
+            exit 1
+          fi
+
+          # The tag must point at the commit this run was started from.
+          if [ "$(git rev-parse "${tag}^{}")" != "$GITHUB_SHA" ]; then
+            echo "::error::tag $tag does not point at $GITHUB_SHA"
+            exit 1
+          fi
+
+          # The release core, so without any prerelease suffix, is what the
+          # manifest and every artefact name carry.
+          version="${tag#v}"
+          version="${version%%-*}"
+
+          manifest=$(jq -r '."."' .release-please-manifest.json)
+          if [ "$version" != "$manifest" ]; then
+            echo "::error::tag core $version does not match the manifest version $manifest"
+            exit 1
+          fi
+
+          # The draft release release-please created must exist. Filling a
+          # release that is not there would silently create a second one.
+          if [ "$(gh release view "$tag" --json isDraft --jq .isDraft)" != true ]; then
+            echo "::error::there is no draft release for $tag"
+            exit 1
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "::notice::releasing $tag as version $version"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   build:
+    needs: identity
     runs-on: ubuntu-latest
     name: build-${{ matrix.board }}
     strategy:
@@ -61,10 +121,13 @@ jobs:
           path: kernel*.img
 
   package:
-    needs: build
+    needs: [identity, build]
     runs-on: ubuntu-latest
+    # The environment restricts deployments to main and v* tags and is where
+    # any publication credential would live.
+    environment: release
     permissions:
-      # Creating the GitHub release is the only write this workflow needs.
+      # Filling and publishing the release is the only write this workflow needs.
       contents: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -133,21 +196,70 @@ jobs:
           path: sdcard
           merge-multiple: true
 
-      - name: Get version
-        id: version
-        run: echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
-
       - name: Create release package
-        run: cd sdcard && zip -r "../mt32-pi-${{ steps.version.outputs.version }}.zip" ./*
+        env:
+          VERSION: ${{ needs.identity.outputs.version }}
+        run: |
+          set -euo pipefail
+          cd sdcard && zip -q -r "../mt32-pi-${VERSION}.zip" ./*
+          cd ..
+          sha256sum "mt32-pi-${VERSION}.zip" > SHA256SUMS
+          cat SHA256SUMS
 
-      - name: Upload SD card archive
+      - name: Keep the package as a run artefact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: mt32-pi-${{ steps.version.outputs.version }}
-          path: mt32-pi-*.zip
+          name: mt32-pi-${{ needs.identity.outputs.version }}
+          path: |
+            mt32-pi-*.zip
+            SHA256SUMS
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
-        with:
-          files: mt32-pi-*.zip
-          generate_release_notes: true
+      # gh release upload rather than a release action: release-please already
+      # created the draft and wrote its notes from the changelog. An action that
+      # regenerates the body would overwrite them.
+      - name: Attach the assets to the draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.identity.outputs.version }}
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" "mt32-pi-${VERSION}.zip" SHA256SUMS --clobber
+
+      # Verify before anything becomes public: download what the release now
+      # serves and compare it byte for byte with what was built here.
+      - name: Verify the attached assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          mkdir readback
+          gh release download "$TAG" --dir readback --clobber
+          cd readback
+          sha256sum --check SHA256SUMS
+          cmp "../SHA256SUMS" SHA256SUMS
+          echo "::notice::the attached assets match the build byte for byte"
+
+      - name: Publish the draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release edit "$TAG" --draft=false
+          test "$(gh release view "$TAG" --json isDraft --jq .isDraft)" = false
+
+      # And once more against the public download, without a token in the
+      # request, because that is the path a user actually takes.
+      - name: Verify the public download
+        env:
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.identity.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir public
+          curl -sSfL -o "public/mt32-pi-${VERSION}.zip" \
+            "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/mt32-pi-${VERSION}.zip"
+          cmp "mt32-pi-${VERSION}.zip" "public/mt32-pi-${VERSION}.zip"
+          echo "::notice::the public download matches the build byte for byte"
