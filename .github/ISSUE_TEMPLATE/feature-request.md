@@ -8,19 +8,16 @@ labels: enhancement
 
 <!--
 
-                                          >>> 🛑 STOP! 🛑 <<<
+Before opening an issue:
 
-Do you need help with mt32-pi?
-If so, please DO NOT OPEN AN ISSUE HERE.
+- This is the community fork. The upstream project at dwhinham/mt32-pi is no
+  longer maintained; do not open issues there.
+- The upstream wiki is still the reference documentation for hardware setup and
+  configuration: https://github.com/dwhinham/mt32-pi/wiki
+- Anything specific to this fork is in the README and the changelog.
 
-Issues are for reproducible bug reports and feature requests.
-Requests for support and "how-to" questions may be closed without notice.
-
-If you have a question:
-- Read the FAQ: https://github.com/dwhinham/mt32-pi/wiki/FAQ
-- Read the wiki pages: https://github.com/dwhinham/mt32-pi/wiki
-- If you can't find an answer, open a new Q&A topic in the Discussions area:
-  https://github.com/dwhinham/mt32-pi/discussions/categories/q-a
+There is no discussions area on this fork. Questions are welcome as an issue;
+label them "question" and expect a slower answer than for a reproducible bug.
 -->
 
 ## Is your feature request related to a problem? Please describe.
