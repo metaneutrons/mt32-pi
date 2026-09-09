@@ -1,7 +1,33 @@
+# Grouping is deliberately separated by update kind. One group across all kinds
+# would bundle a breaking change with harmless bumps, and a single broken
+# dependency would then block the whole stack. Minor and patch stay bundled;
+# major arrives on its own.
+#
+# `cooldown` keeps a version that is withdrawn shortly after publication out of
+# every pull request. `semver-major-days` is not permitted for github-actions;
+# if it stands here, Dependabot rejects the entire file and no update runs at
+# all, not even a security update.
+#
+# The git submodules under external/ are deliberately NOT managed here.
+# Dependabot tracks the latest commit on a submodule's configured branch and
+# does no version comparison, so it would move circle-stdlib, FluidSynth and
+# Munt off their release tags onto upstream development HEADs. They are bumped
+# by hand to tagged releases instead.
+
 version: 2
+
 updates:
-  - package-ecosystem: "github-actions"
-    directory: "/"
+  - package-ecosystem: github-actions
+    directory: /
     schedule:
-      interval: "daily"
-    target-branch: "main"
+      interval: weekly
+      day: monday
+      time: '05:15'
+      timezone: Europe/Berlin
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 3
+    groups:
+      github-actions-minor-patch:
+        patterns: ['*']
+        update-types: [minor, patch]
