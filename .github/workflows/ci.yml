@@ -1,6 +1,19 @@
 name: CI
 
-on: [push, pull_request]
+# pull_request plus push on main only. `on: [push, pull_request]` ran every
+# branch twice, once for the push and once for the pull request.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   toolchain-version: 14.3.rel1
@@ -9,26 +22,26 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
 
-      - uses: psf/black@stable
+      - uses: psf/black@87928e6d6761a4a6d22250e1fee5601b3998086e # 26.5.1
         with:
           options: --check --diff --preview
           src: scripts
 
-      - uses: isort/isort-action@master
+      - uses: isort/isort-action@24d8a7a51d33ca7f36c3f23598dafa33f7071326 # v1.1.1
         with:
           sortPaths: scripts
 
-      - uses: py-actions/flake8@v2
+      - uses: py-actions/flake8@84ec6726560b6d5bd68f2a5bed83d62b52bb50ba # v2
         with:
           path: scripts
 
-      - uses: ludeeus/action-shellcheck@master
+      - uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38 # 2.0.0
         with:
           scandir: scripts
 
@@ -40,18 +53,18 @@ jobs:
       matrix:
         board: [pi3-64, pi4-64, pi5]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Fetch submodules
         run: make submodules
 
-      - uses: hendrikmuhs/ccache-action@v1
+      - uses: hendrikmuhs/ccache-action@5ebbd400eff9e74630f759d94ddd7b6c26299639 # v1
         with:
           key: ${{ env.toolchain-version }}-${{ matrix.board }}
 
       - name: Cache ARM toolchains
         id: cache-toolchains
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             ~/arm-gnu-toolchain-${{ env.toolchain-version }}-x86_64-arm-none-eabi
@@ -62,18 +75,18 @@ jobs:
         if: steps.cache-toolchains.outputs.cache-hit != 'true'
         run: |
           for triplet in arm-none-eabi aarch64-none-elf; do
-            wget -q https://developer.arm.com/-/media/Files/downloads/gnu/${{ env.toolchain-version }}/binrel/arm-gnu-toolchain-${{ env.toolchain-version }}-x86_64-${triplet}.tar.xz
-            tar -xf arm-gnu-toolchain-${{ env.toolchain-version }}-x86_64-${triplet}.tar.xz -C ~
-            rm arm-gnu-toolchain-${{ env.toolchain-version }}-x86_64-${triplet}.tar.xz
+            wget -q "https://developer.arm.com/-/media/Files/downloads/gnu/${{ env.toolchain-version }}/binrel/arm-gnu-toolchain-${{ env.toolchain-version }}-x86_64-${triplet}.tar.xz"
+            tar -xf "arm-gnu-toolchain-${{ env.toolchain-version }}-x86_64-${triplet}.tar.xz" -C ~
+            rm "arm-gnu-toolchain-${{ env.toolchain-version }}-x86_64-${triplet}.tar.xz"
           done
 
       - name: Update PATH
         run: |
           mkdir ~/ccache_bin
           for triplet in arm-none-eabi aarch64-none-elf; do
-            ln -s $(which ccache) ~/ccache_bin/${triplet}-gcc
-            ln -s $(which ccache) ~/ccache_bin/${triplet}-g++
-            echo "$HOME/ccache_bin:$HOME/arm-gnu-toolchain-${{ env.toolchain-version }}-x86_64-${triplet}/bin" >> $GITHUB_PATH
+            ln -s "$(which ccache)" ~/ccache_bin/${triplet}-gcc
+            ln -s "$(which ccache)" ~/ccache_bin/${triplet}-g++
+            echo "$HOME/ccache_bin:$HOME/arm-gnu-toolchain-${{ env.toolchain-version }}-x86_64-${triplet}/bin" >> "$GITHUB_PATH"
           done
 
       - name: Build
@@ -81,3 +94,91 @@ jobs:
 
       - name: Build (HDMI console)
         run: make clean && make -j BOARD=${{ matrix.board }} HDMI_CONSOLE=1
+
+  commit-hygiene:
+    name: Commit hygiene
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Check title, body and every commit
+        # Title and body reach the script exclusively through env, never by
+        # interpolation into the script text: otherwise the pull request title
+        # would be a shell injection vector.
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+          status=0
+          cc='^((feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-z0-9._/-]+\))?!?: .+|Revert ".+")'
+          # grep works line by line, hence .* rather than [^\n]*: in ERE
+          # [^\n] would be the class "neither a backslash nor an n" and would
+          # exclude names containing an 'n'. Anchored at the start of the line,
+          # because by convention a trailer stands on a line of its own.
+          ban='^[[:space:]]*co-authored-by:.*(claude|anthropic)|^[[:space:]]*generated with.*claude code'
+
+          # On a squash merge the pull request title becomes the subject line
+          # on main and thereby determines the next version.
+          if ! printf '%s' "$PR_TITLE" | grep -Eq "$cc"; then
+            echo "::error::pull request title does not follow Conventional Commits: $PR_TITLE"
+            status=1
+          fi
+
+          # With squash_merge_commit_message=PR_BODY the body lands in the commit.
+          if printf '%s' "$PR_BODY" | grep -Eiq "$ban"; then
+            echo "::error::the pull request body contains an AI attribution trailer."
+            status=1
+          fi
+
+          for sha in $(git rev-list "${BASE_SHA}..${HEAD_SHA}"); do
+            if git log -1 --format=%B "$sha" | grep -Eiq "$ban"; then
+              echo "::error::commit $sha contains an AI attribution trailer."
+              status=1
+            fi
+            email=$(git log -1 --format='%ae%n%ce' "$sha")
+            if printf '%s' "$email" | grep -Fq 'noreply@anthropic.com'; then
+              echo "::error::commit $sha has an Anthropic address as author or committer."
+              status=1
+            fi
+          done
+
+          if [ "$status" -ne 0 ]; then
+            echo "::notice::switch this off for good in ~/.claude/settings.json: {\"attribution\":{\"commit\":\"\",\"pr\":\"\"}}"
+            exit 1
+          fi
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          # Mandatory since the action's breaking change: without a token it
+          # aborts on every pull request, with a message about the missing
+          # token rather than about a finding.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # No pull request comments, so the job needs no write permission.
+          GITLEAKS_ENABLE_COMMENTS: false
+
+  # The only required check in the ruleset. Matrix changes therefore do not
+  # break the repository configuration.
+  ci-success:
+    name: CI Success
+    if: always()
+    needs: [lint, build, commit-hygiene, secrets]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every preceding job must have succeeded or been skipped
+        run: |
+          set -euo pipefail
+          printf '%s\n' '${{ toJSON(needs) }}' |
+            jq -e 'all(.[]; .result == "success" or .result == "skipped")'
