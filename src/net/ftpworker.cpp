@@ -414,8 +414,15 @@ const TDirectoryListEntry* CFTPWorker::BuildDirectoryList(size_t& nOutEntries) c
 			while (Result == FR_OK && *FileInfo.fname)
 			{
 				TDirectoryListEntry& Entry = pEntries[nCurrentEntry++];
-				strncpy(Entry.Name, FileInfo.fname, sizeof(Entry.Name) - 1);
-				Entry.Name[sizeof(Entry.Name) - 1] = '\0';
+				// Deliberately the full destination size, unlike the calls
+				// above that pass sizeof(x) - 1. Both Entry.Name and
+				// FileInfo.fname are FF_LFN_BUF + 1 bytes, so fname holds at
+				// most FF_LFN_BUF characters plus its terminator and copying
+				// the full size always brings the terminator along. Passing
+				// one less would make truncation possible instead, which the
+				// compiler rejects: -Werror=stringop-truncation, 'output may
+				// be truncated copying 255 bytes from a string of length 255'.
+				strncpy(Entry.Name, FileInfo.fname, sizeof(Entry.Name));
 
 				if (FileInfo.fattrib & AM_DIR)
 				{
