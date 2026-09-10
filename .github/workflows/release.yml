@@ -61,12 +61,22 @@ jobs:
             exit 1
           fi
 
-          # The draft release release-please created must exist. Filling a
-          # release that is not there would silently create a second one.
-          if [ "$(gh release view "$tag" --json isDraft --jq .isDraft)" != true ]; then
-            echo "::error::there is no draft release for $tag"
-            exit 1
-          fi
+          # For a production tag the draft release-please created must already
+          # exist. Filling a release that is not there would silently create a
+          # second one. A deliberately planned test tag has no release-please
+          # draft by definition, so the packaging job creates it instead; that
+          # job holds contents: write, this one does not.
+          case "$tag" in
+            *-*)
+              echo "::notice::$tag is a test tag; its draft is created during packaging"
+              ;;
+            *)
+              if [ "$(gh release view "$tag" --json isDraft --jq .isDraft)" != true ]; then
+                echo "::error::there is no draft release for $tag"
+                exit 1
+              fi
+              ;;
+          esac
 
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "::notice::releasing $tag as version $version"
@@ -353,6 +363,19 @@ jobs:
           VERSION: ${{ needs.identity.outputs.version }}
         run: |
           set -euo pipefail
+          # A test tag has no release-please draft. Create it here rather than
+          # letting gh release upload create a published release as a side
+          # effect. A production tag always has one and this is a no-op.
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            case "$TAG" in
+              *-*) ;;
+              *) echo "::error::no release exists for the production tag $TAG"; exit 1 ;;
+            esac
+            gh release create "$TAG" --draft --prerelease --title "$TAG" \
+              --notes "Test build for pipeline qualification. Not a release."
+            echo "::notice::created a draft prerelease for the test tag $TAG"
+          fi
+
           gh release upload "$TAG" \
             "mt32-pi-${VERSION}.zip" \
             "mt32-pi-${VERSION}.zip.spdx.json" \
