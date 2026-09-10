@@ -127,8 +127,12 @@ jobs:
     # any publication credential would live.
     environment: release
     permissions:
-      # Filling and publishing the release is the only write this workflow needs.
+      # Filling and publishing the release.
       contents: write
+      # Cosign keyless signing and attest-build-provenance both mint an OIDC
+      # token; the attestation is written to the repository's attestation store.
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -216,10 +220,118 @@ jobs:
           VERSION: ${{ needs.identity.outputs.version }}
         run: |
           set -euo pipefail
-          cd sdcard && zip -q -r "../mt32-pi-${VERSION}.zip" ./*
-          cd ..
-          sha256sum "mt32-pi-${VERSION}.zip" > SHA256SUMS
+          # Normalise timestamps so the archive is reproducible from the commit.
+          SOURCE_DATE_EPOCH=$(git log -1 --pretty=%ct)
+          find sdcard -exec touch -h -d "@${SOURCE_DATE_EPOCH}" {} +
+          # -X drops uid/gid and extra attributes, which differ per runner.
+          (cd sdcard && zip -q -r -X "../mt32-pi-${VERSION}.zip" ./*)
+
+      # The bare-metal kernels cannot be executed on a runner, so this is a
+      # structural check rather than a smoke test: the archive must contain
+      # exactly the kernels the board matrix built, each a valid 64-bit ARM
+      # image of a plausible size, plus the boot firmware and the SoundFont.
+      - name: Check the archive contents
+        env:
+          VERSION: ${{ needs.identity.outputs.version }}
+        run: |
+          set -euo pipefail
+          rm -rf inspect && mkdir inspect
+          unzip -q "mt32-pi-${VERSION}.zip" -d inspect
+
+          missing=0
+          for f in kernel8.img kernel8-rpi4.img kernel_2712.img \
+                   bootcode.bin start.elf start4.elf fixup.dat fixup4.dat \
+                   config.txt mt32-pi.cfg \
+                   soundfonts/GeneralUser-GS.sf2 soundfonts/GeneralUser-GS.cfg; do
+            if [ ! -f "inspect/$f" ]; then
+              echo "::error::missing from the archive: $f"
+              missing=1
+            fi
+          done
+          [ "$missing" -eq 0 ]
+
+          # A truncated or empty kernel would still be a file. Circle produces a
+          # raw binary with no image header, so there is no magic to check;
+          # what it does carry is the version string Kernel.mk stamps in from
+          # `git describe`. Requiring the exact tag there proves the artefact
+          # was built from the tagged commit rather than from a stale cache.
+          for k in inspect/kernel8.img inspect/kernel8-rpi4.img inspect/kernel_2712.img; do
+            size=$(stat -c%s "$k")
+            if [ "$size" -lt 500000 ] || [ "$size" -gt 33554432 ]; then
+              echo "::error::$k is $size bytes, which is outside the plausible range"
+              exit 1
+            fi
+            if ! strings -a "$k" | grep -qxF "mt32-pi ${GITHUB_REF_NAME}"; then
+              echo "::error::$k does not carry the version string 'mt32-pi ${GITHUB_REF_NAME}'"
+              echo "found instead: $(strings -a "$k" | grep -m1 -E '^mt32-pi v' || echo none)"
+              exit 1
+            fi
+            echo "ok  $k  $size bytes, stamped ${GITHUB_REF_NAME}"
+          done
+
+      - name: Generate the SBOM
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+        with:
+          path: .
+          format: spdx-json
+          output-file: mt32-pi-${{ needs.identity.outputs.version }}.zip.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Sign the payload
+        env:
+          VERSION: ${{ needs.identity.outputs.version }}
+        run: |
+          set -euo pipefail
+          # Only the payload gets a bundle of its own. The SBOM is covered by
+          # SHA256SUMS and by the attestation.
+          cosign sign-blob --yes \
+            --bundle "mt32-pi-${VERSION}.zip.sigstore.json" \
+            "mt32-pi-${VERSION}.zip"
+
+      - name: Attest the build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: mt32-pi-${{ needs.identity.outputs.version }}.zip
+
+      # The expected asset set is derived from the payload list, not maintained
+      # as a second constant that can drift away from it.
+      - name: Assemble and check the release candidate
+        env:
+          VERSION: ${{ needs.identity.outputs.version }}
+        run: |
+          set -euo pipefail
+          payloads=("mt32-pi-${VERSION}.zip")
+          expected=()
+          for payload in "${payloads[@]}"; do
+            expected+=("$payload" "${payload}.spdx.json" "${payload}.sigstore.json")
+          done
+
+          for f in "${expected[@]}"; do
+            [ -s "$f" ] || { echo "::error::candidate asset missing or empty: $f"; exit 1; }
+          done
+
+          sha256sum "${expected[@]}" > SHA256SUMS
+          lines=$(wc -l < SHA256SUMS)
+          if [ "$lines" -ne "${#expected[@]}" ]; then
+            echo "::error::SHA256SUMS has $lines lines for ${#expected[@]} assets"
+            exit 1
+          fi
           cat SHA256SUMS
+
+      - name: Verify the signature before anything is published
+        env:
+          VERSION: ${{ needs.identity.outputs.version }}
+        run: |
+          set -euo pipefail
+          cosign verify-blob \
+            --bundle "mt32-pi-${VERSION}.zip.sigstore.json" \
+            --certificate-identity-regexp "^https://github.com/${GITHUB_REPOSITORY}/" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            "mt32-pi-${VERSION}.zip"
+          echo "::notice::cosign verified the payload against this repository's workflow identity"
 
       - name: Keep the package as a run artefact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -227,6 +339,8 @@ jobs:
           name: mt32-pi-${{ needs.identity.outputs.version }}
           path: |
             mt32-pi-*.zip
+            mt32-pi-*.spdx.json
+            mt32-pi-*.sigstore.json
             SHA256SUMS
 
       # gh release upload rather than a release action: release-please already
@@ -239,7 +353,11 @@ jobs:
           VERSION: ${{ needs.identity.outputs.version }}
         run: |
           set -euo pipefail
-          gh release upload "$TAG" "mt32-pi-${VERSION}.zip" SHA256SUMS --clobber
+          gh release upload "$TAG" \
+            "mt32-pi-${VERSION}.zip" \
+            "mt32-pi-${VERSION}.zip.spdx.json" \
+            "mt32-pi-${VERSION}.zip.sigstore.json" \
+            SHA256SUMS --clobber
 
       # Verify before anything becomes public: download what the release now
       # serves and compare it byte for byte with what was built here.
@@ -256,14 +374,29 @@ jobs:
           cmp "../SHA256SUMS" SHA256SUMS
           echo "::notice::the attached assets match the build byte for byte"
 
+      # A tag carrying a prerelease suffix produces a prerelease that never
+      # becomes "Latest". Only a production tag is promoted.
       - name: Publish the draft
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          gh release edit "$TAG" --draft=false
+          case "$TAG" in
+            *-*) prerelease=true ;;
+            *)   prerelease=false ;;
+          esac
+
+          if [ "$prerelease" = true ]; then
+            gh release edit "$TAG" --draft=false --prerelease --latest=false
+            echo "::notice::$TAG published as a prerelease and not promoted to latest"
+          else
+            gh release edit "$TAG" --draft=false --prerelease=false --latest
+            echo "::notice::$TAG published and promoted to latest"
+          fi
+
           test "$(gh release view "$TAG" --json isDraft --jq .isDraft)" = false
+          test "$(gh release view "$TAG" --json isPrerelease --jq .isPrerelease)" = "$prerelease"
 
       # And once more against the public download, without a token in the
       # request, because that is the path a user actually takes.
