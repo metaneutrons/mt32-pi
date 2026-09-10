@@ -414,7 +414,8 @@ const TDirectoryListEntry* CFTPWorker::BuildDirectoryList(size_t& nOutEntries) c
 			while (Result == FR_OK && *FileInfo.fname)
 			{
 				TDirectoryListEntry& Entry = pEntries[nCurrentEntry++];
-				strncpy(Entry.Name, FileInfo.fname, sizeof(Entry.Name));
+				strncpy(Entry.Name, FileInfo.fname, sizeof(Entry.Name) - 1);
+				Entry.Name[sizeof(Entry.Name) - 1] = '\0';
 
 				if (FileInfo.fattrib & AM_DIR)
 				{
