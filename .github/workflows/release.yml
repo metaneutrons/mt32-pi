@@ -248,11 +248,19 @@ jobs:
           rm -rf inspect && mkdir inspect
           unzip -q "mt32-pi-${VERSION}.zip" -d inspect
 
+          # This list is the copy contract of the steps above, not a guess:
+          # the boot files are exactly those the "Download boot firmware" step
+          # copies (the cut-down start_cd/fixup_cd variants, which is what a
+          # baremetal kernel needs), the configuration files are the tracked
+          # ones under sdcard/, and the three kernels are what the board matrix
+          # builds. Change the copy list and this check must change with it.
           missing=0
           for f in kernel8.img kernel8-rpi4.img kernel_2712.img \
-                   bootcode.bin start.elf start4.elf fixup.dat fixup4.dat \
-                   config.txt mt32-pi.cfg \
-                   soundfonts/GeneralUser-GS.sf2 soundfonts/GeneralUser-GS.cfg; do
+                   armstub8-rpi4.bin bootcode.bin \
+                   start_cd.elf start4cd.elf fixup_cd.dat fixup4cd.dat \
+                   config.txt cmdline.txt mt32-pi.cfg \
+                   soundfonts/GeneralUser-GS.sf2 soundfonts/GeneralUser-GS.cfg \
+                   docs/LICENSE.GeneralUserGS; do
             if [ ! -f "inspect/$f" ]; then
               echo "::error::missing from the archive: $f"
               missing=1
