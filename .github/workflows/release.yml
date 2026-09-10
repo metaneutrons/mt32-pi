@@ -61,27 +61,14 @@ jobs:
             exit 1
           fi
 
-          # For a production tag the draft release-please created must already
-          # exist. Filling a release that is not there would silently create a
-          # second one. A deliberately planned test tag has no release-please
-          # draft by definition, so the packaging job creates it instead; that
-          # job holds contents: write, this one does not.
-          case "$tag" in
-            *-*)
-              echo "::notice::$tag is a test tag; its draft is created during packaging"
-              ;;
-            *)
-              if [ "$(gh release view "$tag" --json isDraft --jq .isDraft)" != true ]; then
-                echo "::error::there is no draft release for $tag"
-                exit 1
-              fi
-              ;;
-          esac
+          # No release check here. This job runs with contents: read, and a
+          # token without write access cannot see a draft release at all: the
+          # lookup fails even when release-please has just created one. The
+          # check therefore lives in the packaging job, which holds
+          # contents: write and can actually perform it.
 
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "::notice::releasing $tag as version $version"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build:
     needs: identity
