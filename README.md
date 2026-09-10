@@ -29,6 +29,7 @@ This is a community-maintained fork of [dwhinham/mt32-pi](https://github.com/dwh
 - wpa_supplicant → **v2.11**
 - FatFs → **R0.16**
 - Toolchain: GCC 11.3 → **14.3.Rel1**
+- GeneralUser GS 1.511 → **2.0.3**, fetched from a pinned commit and checksum-verified
 
 **New features:**
 - **SF3 SoundFont support** — Ogg Vorbis compressed SoundFonts via stb_vorbis (5-10x smaller files)
@@ -132,7 +133,7 @@ The [mt32-pi logo] was designed by and is © Dale Whinham. The terms of use for 
 [FluidSynth]: https://www.fluidsynth.org
 [FTP server]: https://github.com/dwhinham/mt32-pi/wiki/Embedded-FTP-server
 [General MIDI]: https://en.wikipedia.org/wiki/General_MIDI
-[GeneralUser GS]: http://schristiancollins.com/generaluser.php
+[GeneralUser GS]: https://www.schristiancollins.com/generaluser
 [GPIO MIDI interface]: https://github.com/dwhinham/mt32-pi/wiki/GPIO-MIDI-interface
 [I²S Hi-Fi DACs]: https://github.com/dwhinham/mt32-pi/wiki/I%C2%B2S-DACs
 [inih]: https://github.com/benhoyt/inih
