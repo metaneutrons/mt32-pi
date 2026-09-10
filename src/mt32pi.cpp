@@ -978,9 +978,21 @@ void CMT32Pi::UpdateMIDI()
 	// Process MIDI messages
 	ParseMIDIBytes(Buffer, nBytes);
 
-	// Universal MIDI Thru: forward received bytes to UART TX
+	// Universal MIDI Thru: forward received bytes to UART TX. The result is
+	// checked for the same reason the GPIO thru path below checks it: the UART
+	// runs at 31250 baud and a USB source can deliver faster than that, so a
+	// full TX FIFO produces a short write. Dropping the tail of a message
+	// silently leaves the downstream device with a truncated SysEx or a note-on
+	// without its velocity.
 	if (m_bMIDIThruEnabled && m_pSerial)
-		m_pSerial->Write(Buffer, nBytes);
+	{
+		const int nSendResult = m_pSerial->Write(Buffer, nBytes);
+		if (nSendResult != static_cast<int>(nBytes))
+		{
+			LOGERR("MIDI thru: received %u bytes, but only sent %d bytes", static_cast<unsigned>(nBytes), nSendResult);
+			LCDLog(TLCDLogType::Error, "UART TX error!");
+		}
+	}
 
 	// Reset the Active Sense timer
 	s_pThis->m_nActiveSenseTime = s_pThis->m_pTimer->GetTicks();
