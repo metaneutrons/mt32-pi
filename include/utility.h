@@ -133,14 +133,24 @@ namespace Utility
 		}
 	}
 
-	// Swaps two objects in-place
+	// Swaps two objects in-place.
+	//
+	// This used to relocate the objects byte-wise with memcpy. QSort() below is
+	// called on TSoundFontListEntry, which holds two CStrings, and CString has
+	// a virtual destructor and owns a heap pointer. Copying such an object as
+	// raw bytes is undefined; it only happened to work because both operands
+	// share a dynamic type, so their vtable pointers are identical. The casts
+	// to void* that silenced the compiler were hiding exactly that.
+	//
+	// Circle's CString provides a move constructor and move assignment, so the
+	// move-based swap is both correct and free of allocations. For a trivial
+	// type it is the same three copies as before.
 	template<class T>
 	inline void Swap(T& ObjectA, T& ObjectB)
 	{
-		u8 Buffer[sizeof(T)];
-		memcpy(Buffer, &ObjectA, sizeof(T));
-		memcpy((void *)&ObjectA, &ObjectB, sizeof(T));
-		memcpy((void *)&ObjectB, Buffer, sizeof(T));
+		T Temp(static_cast<T&&>(ObjectA));
+		ObjectA = static_cast<T&&>(ObjectB);
+		ObjectB = static_cast<T&&>(Temp);
 	}
 
 	namespace
