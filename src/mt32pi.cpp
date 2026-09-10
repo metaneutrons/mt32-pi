@@ -115,7 +115,9 @@ CMT32Pi::CMT32Pi(CI2CMaster* pI2CMaster, CSPIMaster* pSPIMaster, CInterruptSyste
 	  m_nActiveSenseTime(0),
 
 	  m_bRunning(true),
-	  m_bUITaskDone(true), //Init as "done" before spawned, reset to false while spawn
+	  // "Done" until a UI task actually exists; Initialize() clears it just
+	  // before the other cores are started. See the comment there.
+	  m_bUITaskDone(true),
 	  m_bLEDOn(false),
 	  m_nLEDOnTime(0),
 
@@ -140,9 +142,13 @@ bool CMT32Pi::Initialize(bool bSerialMIDIAvailable)
 	m_bSerialMIDIEnabled = bSerialMIDIAvailable;
 	m_bMIDIThruEnabled = m_pConfig->MIDIThru;
 
-	//Wipe error buffer;
-	char Buffer[LOGGER_BUFSIZE];
-	CLogger::Get()->Read(Buffer, sizeof(Buffer), true);
+	// Drain anything the boot logged so far, so the display shows only what
+	// happens from here on. Read in chunks: LOGGER_BUFSIZE is 16 KiB and a
+	// frame that size just to discard its contents is a lot of stack to spend
+	// on a throwaway.
+	char Buffer[256];
+	while (CLogger::Get()->Read(Buffer, sizeof(Buffer), true) > 0)
+		;
 
 	switch (m_pConfig->LCDType)
 	{
@@ -323,9 +329,20 @@ bool CMT32Pi::Initialize(bool bSerialMIDIAvailable)
 	// Start audio
 	m_pSound->Start();
 
+	// Hand the UI task its flag before the cores that could observe it exist.
+	// Everything above this point runs single-core, so a panic there must not
+	// wait for a UI task that was never started; that is why the flag starts
+	// out as "done". From here on a UI task does exist, and only it clears the
+	// flag again. Setting it inside UITask() instead left a window in which
+	// core 0 could see "done" while core 1 was still on its way into the task.
+	m_bUITaskDone = false;
+
 	// Start other cores
 	if (!CMultiCoreSupport::Initialize())
+	{
+		m_bUITaskDone = true;
 		return false;
+	}
 
 	return true;
 }
@@ -512,7 +529,6 @@ void CMT32Pi::MainTask()
 void CMT32Pi::UITask()
 {
 	LOGNOTE("UI task on Core 1 starting up");
-	m_bUITaskDone = false;
 	const bool bMisterEnabled = m_pConfig->ControlMister;
 
 	// Nothing for this core to do; bail out
