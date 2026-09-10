@@ -30,6 +30,7 @@
 
 #include "net/applemidi.h"
 #include "net/byteorder.h"
+#include "utility.h"
 
 // #define APPLEMIDI_DEBUG
 
@@ -145,10 +146,19 @@ bool ParseInvitationPacket(const u8* pBuffer, size_t nSize, TAppleMIDISession* p
 	pOutPacket->nInitiatorToken = ntohl(pInPacket->nInitiatorToken);
 	pOutPacket->nSSRC = ntohl(pInPacket->nSSRC);
 
+	// The name is bounded by what was actually received, not by the size of the
+	// field. The packet is a cast over the receive buffer, so copying a fixed
+	// length would read whatever the previous datagram left behind, and an
+	// initiator that fills the field without a terminator would leave Name
+	// unterminated for every later use as a C string.
 	if (nSize > NamelessSessionPacketSize)
-		strncpy(pOutPacket->Name, pInPacket->Name, sizeof(pOutPacket->Name));
+	{
+		const size_t nNameLength = Utility::Min(nSize - NamelessSessionPacketSize, sizeof(pOutPacket->Name) - 1);
+		memcpy(pOutPacket->Name, pInPacket->Name, nNameLength);
+		pOutPacket->Name[nNameLength] = '\0';
+	}
 	else
-		strncpy(pOutPacket->Name, "<unknown>", sizeof(pOutPacket->Name));
+		strcpy(pOutPacket->Name, "<unknown>");
 
 	return true;
 }
