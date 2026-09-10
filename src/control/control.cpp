@@ -22,11 +22,17 @@
 //
 
 #include <circle/interrupt.h>
+#include <circle/logger.h>
 #include <circle/timer.h>
 
 #include "control/control.h"
 
+LOGMODULE("control");
+
+#if RASPPI != 5
+// Only referenced by the CUserTimer path, which does not exist on the Pi 5.
 constexpr u16 PollRateMicros = 1000;
+#endif
 
 CControl::CControl(TEventQueue& pEventQueue)
 	: m_pEventQueue(&pEventQueue),
@@ -46,14 +52,22 @@ CControl::CControl(TEventQueue& pEventQueue)
 
 bool CControl::Initialize()
 {
-#if RASPPI != 5
+#if RASPPI == 5
+	// CUserTimer is unavailable on the Raspberry Pi 5, and it is the only
+	// caller of ReadGPIOPins(). Update() merely dispatches events from
+	// m_nButtonState, which would never be sampled, so buttons and rotary
+	// encoders would appear configured and silently do nothing. Report the
+	// failure instead, so the caller drops the control and the user sees it.
+	LOGWARN("Buttons and rotary encoders are not supported on the Raspberry Pi 5");
+	return false;
+#else
 	if (!m_Timer.Initialize())
 		return false;
 
 	m_Timer.Start(PollRateMicros);
-#endif
 
 	return true;
+#endif
 }
 
 void CControl::Update()
