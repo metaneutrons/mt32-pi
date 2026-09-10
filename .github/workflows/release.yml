@@ -177,15 +177,30 @@ jobs:
           wget -q -O sdcard/firmware/LICENCE.broadcom_bcm43xx \
                https://raw.githubusercontent.com/RPi-Distro/firmware-nonfree/master/debian/config/brcm80211/LICENSE
 
-      - name: Download GeneralUser GS SoundFont
+      # Pinned to a commit and checked against recorded hashes. The previous
+      # source was an unpinned Google Drive link fetched with gdown, so whatever
+      # sat behind that link went into the release unverified.
+      - name: Download the GeneralUser GS SoundFont
+        env:
+          # GeneralUser GS 2.0.3, documentation revision 6.
+          GUGS_COMMIT: 684543d5e5efaef08d02be50dcda8d552478fa60
         run: |
-          pip install gdown
-          gdown -q https://drive.google.com/uc?id=1omYCHcGymYGZcKe0DgRP1SeB1wTkemtx
-          unzip "GeneralUser GS v1.511.zip"
-          cp "GeneralUser GS v1.511/GeneralUser GS v1.511.sf2" sdcard/soundfonts/
+          set -euo pipefail
+          base="https://raw.githubusercontent.com/mrbumpy409/GeneralUser-GS/${GUGS_COMMIT}"
+          curl -sSfL -o GeneralUser-GS.sf2      "${base}/GeneralUser-GS.sf2"
+          curl -sSfL -o CHANGELOG.GeneralUserGS "${base}/documentation/CHANGELOG.md"
+          curl -sSfL -o LICENSE.GeneralUserGS   "${base}/documentation/LICENSE.txt"
+
+          printf '%s  %s\n' \
+            9575028c7a1f589f5770fccc8cff2734566af40cd26ed836944e9a5152688cfe GeneralUser-GS.sf2 \
+            2ed3138c31d43c8a36e106703679e3ec88bf579da7c34051bd9531ec08939b44 CHANGELOG.GeneralUserGS \
+            7b32efefdf95ce38a043799f0659853ddc00fbaa14d8c50f0aca16b9b8b405be LICENSE.GeneralUserGS \
+            > gugs.sha256
+          sha256sum --check --strict gugs.sha256
+
+          cp GeneralUser-GS.sf2 sdcard/soundfonts/
           mkdir -p sdcard/docs
-          cp "GeneralUser GS v1.511/CHANGELOG.md" sdcard/docs/CHANGELOG.GeneralUserGS
-          cp "GeneralUser GS v1.511/LICENSE.txt" sdcard/docs/LICENSE.GeneralUserGS
+          cp CHANGELOG.GeneralUserGS LICENSE.GeneralUserGS sdcard/docs/
           cp LICENSE sdcard/docs/
           cp README.md sdcard/docs/
 
